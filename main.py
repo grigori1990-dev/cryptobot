@@ -3,17 +3,17 @@ import pandas as pd
 import requests
 import time
 import os
-import schedule
 from datetime import datetime
 import pytz
+import traceback
 
-TELEGRAM_TOKEN = "8635777227:AAHC01rMDifi6m8wpHWO3wPIufZ4AIfiqP0"
-CHAT_ID = "1364766466"
-MIN_FACTORS = 6
-TOTAL_FACTORS = 13
-TBILISI_TZ = pytz.timezone('Asia/Tbilisi')
-TRADE_START = 8
-TRADE_END = 20
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+CHAT_ID        = os.getenv("CHAT_ID", "")
+MIN_FACTORS    = 6
+TOTAL_FACTORS  = 13
+TBILISI_TZ     = pytz.timezone('Asia/Tbilisi')
+TRADE_START    = 8
+TRADE_END      = 20
 
 # ─────────────── TELEGRAM ───────────────
 def send_telegram(msg):
@@ -21,13 +21,13 @@ def send_telegram(msg):
     try:
         requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
     except Exception as e:
-        print(f"Telegram ошибка: {e}")
+        print(f"Telegram ошибка: {e}", flush=True)
 
 def is_trading_hours():
     now = datetime.now(TBILISI_TZ)
     return TRADE_START <= now.hour < TRADE_END
 
-# ─────────────── УЛУЧШЕНИЕ 4: FEAR & GREED ───────────────
+# ─────────────── FEAR & GREED ───────────────
 def get_fear_greed():
     try:
         r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=5)
@@ -40,7 +40,7 @@ def get_fear_greed():
         pass
     return 50, "Neutral"
 
-# ─────────────── УЛУЧШЕНИЕ 3: ТРЕНД BTC ───────────────
+# ─────────────── ТРЕНД BTC ───────────────
 def get_btc_trend(exchange):
     try:
         ohlcv = exchange.fetch_ohlcv("BTC/USDT", "4h", limit=50)
@@ -125,7 +125,6 @@ def calc_cci(df, period=20):
     mad = tp.rolling(window=period).apply(lambda x: abs(x - x.mean()).mean(), raw=True)
     return (tp - sma) / (0.015 * mad + 1e-9)
 
-# ─────────────── УЛУЧШЕНИЕ 2: ATR-СТОП ───────────────
 def calc_atr(df, period=14):
     high, low, close = df["high"], df["low"], df["close"]
     tr = pd.concat([high - low,
@@ -252,13 +251,11 @@ def score_timeframe(df):
 # ─────────────── АНАЛИЗ МОНЕТЫ ───────────────
 def analyze(symbol, exchange, btc_trend, fg_value):
     try:
-        # 1h данные
         ohlcv_1h = exchange.fetch_ohlcv(symbol, "1h", limit=220)
         df_1h = pd.DataFrame(ohlcv_1h, columns=["ts", "open", "high", "low", "close", "volume"])
         if len(df_1h) < 60:
             return None
 
-        # УЛУЧШЕНИЕ 1: 4h данные для подтверждения
         ohlcv_4h = exchange.fetch_ohlcv(symbol, "4h", limit=100)
         df_4h = pd.DataFrame(ohlcv_4h, columns=["ts", "open", "high", "low", "close", "volume"])
 
@@ -268,36 +265,28 @@ def analyze(symbol, exchange, btc_trend, fg_value):
         if bull_1h is None or bull_4h is None:
             return None
 
-        # Направление по 1H (основной таймфрейм)
         dir_1h = "LONG" if bull_1h > bear_1h else "SHORT"
         dir_4h = "LONG" if bull_4h > bear_4h else "SHORT"
         direction = dir_1h
 
-        # 4H совпадает — даём бонус +20% к весу
         if dir_1h == dir_4h:
             bull_total = bull_1h * 0.6 + bull_4h * 0.4
             bear_total = bear_1h * 0.6 + bear_4h * 0.4
         else:
-            # 4H не совпадает — берём только 1H, но требуем выше порог
             bull_total = bull_1h
             bear_total = bear_1h
 
         winning = max(bull_total, bear_total)
-
         if winning < MIN_FACTORS * 0.6:
             return None
 
         conf = round(winning / (TOTAL_FACTORS * 0.6) * 100, 1)
         if conf > 99: conf = 99.0
 
-        # BTC тренд и F&G — только информационно, не блокируем сигналы
-
         close = df_1h["close"].iloc[-1]
-
-        # УЛУЧШЕНИЕ 2: ATR-стоп вместо фиксированного 1%
         atr_pct = atr_1h / close
-        sl_pct = min(max(atr_pct * 1.5, 0.008), 0.03)  # от 0.8% до 3%
-        tp_pct = sl_pct * 3  # всегда 1:3
+        sl_pct = min(max(atr_pct * 1.5, 0.008), 0.03)
+        tp_pct = sl_pct * 3
 
         if direction == "LONG":
             sl = round(close * (1 - sl_pct), 8)
@@ -306,10 +295,7 @@ def analyze(symbol, exchange, btc_trend, fg_value):
             sl = round(close * (1 + sl_pct), 8)
             tp = round(close * (1 - tp_pct), 8)
 
-        # Новости
         news_text, news_score = get_news_sentiment(symbol)
-
-        # Топ 5 причин из обоих таймфреймов
         all_reasons = reasons_1h[:3] + [f"4H: {r}" for r in reasons_4h[:2]]
 
         return {
@@ -327,34 +313,42 @@ def analyze(symbol, exchange, btc_trend, fg_value):
             "fg": fg_value
         }
     except Exception as e:
-        print(f"Ошибка {symbol}: {e}")
+        print(f"Ошибка {symbol}: {e}", flush=True)
         return None
 
 # ─────────────── СКАНИРОВАНИЕ ───────────────
 def scan():
     now_tbilisi = datetime.now(TBILISI_TZ)
+
     if not is_trading_hours():
-        print(f"[{now_tbilisi.strftime('%H:%M')} Тбилиси] Нерабочее время, жду 08:00")
+        next_open = now_tbilisi.replace(hour=TRADE_START, minute=0, second=0, microsecond=0)
+        if now_tbilisi.hour >= TRADE_END:
+            # Следующий день
+            from datetime import timedelta
+            next_open = next_open + timedelta(days=1)
+        sleep_sec = max(0, int((next_open - now_tbilisi).total_seconds()))
+        print(f"[{now_tbilisi.strftime('%H:%M')} Тбилиси] Нерабочее время. Сплю до 08:00 ({sleep_sec//3600}ч {(sleep_sec%3600)//60}мин)", flush=True)
+        time.sleep(min(sleep_sec, 3600))  # Спим максимум 1 час, потом пересчитываем
         return
 
-    print(f"[{now_tbilisi.strftime('%H:%M')} Тбилиси] Начинаю сканирование...")
-    send_telegram("🔍 Сканирую рынок (v3.0 — мультитаймфрейм + ATR + BTC фильтр)...")
+    print(f"[{now_tbilisi.strftime('%H:%M')} Тбилиси] 🔍 Начинаю сканирование...", flush=True)
+    send_telegram("🔍 Сканирую рынок (v3.0 — мультитаймфрейм + ATR)...")
 
     exchange = ccxt.bybit({"timeout": 15000})
 
-    # Получаем общий контекст рынка
     fg_value, fg_name = get_fear_greed()
     btc_trend = get_btc_trend(exchange)
     btc_emoji = "📈" if btc_trend == "bull" else ("📉" if btc_trend == "bear" else "➡️")
-    print(f"Fear & Greed: {fg_value} ({fg_name}) | BTC тренд: {btc_trend}")
+    print(f"Fear & Greed: {fg_value} ({fg_name}) | BTC тренд: {btc_trend}", flush=True)
 
     try:
         tickers = exchange.fetch_tickers()
         usdt = {k: v for k, v in tickers.items() if k.endswith("/USDT")}
         coins = sorted(usdt, key=lambda x: usdt[x].get("quoteVolume", 0), reverse=True)[:50]
-        print(f"Загружено {len(coins)} монет")
+        print(f"Загружено {len(coins)} монет", flush=True)
     except Exception as e:
-        send_telegram(f"❌ Ошибка Binance: {str(e)[:100]}")
+        print(f"Ошибка загрузки тикеров: {e}", flush=True)
+        send_telegram(f"❌ Ошибка загрузки рынка: {str(e)[:100]}")
         return
 
     found = []
@@ -362,7 +356,7 @@ def scan():
         s = analyze(coin, exchange, btc_trend, fg_value)
         if s:
             found.append(s)
-            print(f"✅ {coin} {s['direction']} {s['conf']}%")
+            print(f"✅ {coin} {s['direction']} {s['conf']}%", flush=True)
         time.sleep(0.5)
 
     found.sort(key=lambda x: x["conf"], reverse=True)
@@ -386,44 +380,44 @@ def scan():
         time.sleep(1)
 
     if not found:
-        print("Сигналов нет")
+        print("Сигналов нет", flush=True)
         send_telegram(
             f"😴 Сигналов нет\n"
             f"🌡 F&G: {fg_value} ({fg_name}) | BTC: {btc_emoji}\n"
-            f"Следующий скан через 30 мин."
+            f"Следующий скан через 10 мин."
         )
     else:
-        print(f"Отправлено {len(found)} сигналов")
+        print(f"Отправлено {len(found)} сигналов", flush=True)
 
-# ─────────────── СТАРТ ───────────────
-print("=" * 50)
-print("  🤖 КриптоБот v3.0 — Professional Edition")
-print("=" * 50)
-print(f"  ✅ Мультитаймфрейм (1H + 4H)")
-print(f"  ✅ ATR-стоп (адаптивный, всегда 1:3)")
-print(f"  ✅ Фильтр тренда BTC")
-print(f"  ✅ Fear & Greed Index")
-print(f"  Порог: {MIN_FACTORS}/{TOTAL_FACTORS} факторов")
-print(f"  Время: {TRADE_START}:00 — {TRADE_END}:00 (Тбилиси UTC+4)")
-print(f"  Сканирование: каждые 30 минут")
-print("=" * 50)
+# ─────────────── ГЛАВНЫЙ ЦИКЛ ───────────────
+print("=" * 50, flush=True)
+print("  🤖 КриптоБот v3.0 — Render Edition", flush=True)
+print("=" * 50, flush=True)
+print(f"  ✅ Мультитаймфрейм (1H + 4H)", flush=True)
+print(f"  ✅ ATR-стоп (адаптивный, всегда 1:3)", flush=True)
+print(f"  ✅ Fear & Greed Index", flush=True)
+print(f"  Порог: {MIN_FACTORS}/{TOTAL_FACTORS} факторов", flush=True)
+print(f"  Время: {TRADE_START}:00 — {TRADE_END}:00 (Тбилиси UTC+4)", flush=True)
+print(f"  Сканирование: каждые 10 минут", flush=True)
+print("=" * 50, flush=True)
 
-import traceback
-import sys
+if not TELEGRAM_TOKEN or not CHAT_ID:
+    print("❌ ОШИБКА: Переменные TELEGRAM_TOKEN и CHAT_ID не заданы!", flush=True)
+    print("   Задай их в настройках Environment Variables на Render.com", flush=True)
+    exit(1)
 
-schedule.every(30).minutes.do(scan)
-try:
-    scan()
-except Exception as e:
-    print(f"КРИТИЧЕСКАЯ ОШИБКА при запуске: {e}", flush=True)
-    traceback.print_exc()
-    send_telegram(f"❌ Бот упал при запуске: {str(e)[:200]}")
-    sys.exit(1)
+send_telegram("🚀 КриптоБот v3.0 запущен на Render.com\n"
+              f"⏰ Торговые часы: {TRADE_START}:00 — {TRADE_END}:00 (Тбилиси)\n"
+              f"🔄 Сканирование каждые 10 минут")
 
 while True:
     try:
-        schedule.run_pending()
+        scan()
     except Exception as e:
-        print(f"Ошибка в цикле: {e}", flush=True)
+        print(f"❌ Ошибка в основном цикле: {e}", flush=True)
         traceback.print_exc()
-    time.sleep(60)
+        send_telegram(f"⚠️ Ошибка бота: {str(e)[:200]}\nПерезапускаю через 60 сек...")
+        time.sleep(60)
+        continue
+
+    time.sleep(600)  # 10 минут до следующего скана
