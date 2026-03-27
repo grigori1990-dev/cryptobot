@@ -7,8 +7,8 @@ import schedule
 from datetime import datetime
 import pytz
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8635777227:AAHC01rMDifi6m8wpHWO3wPIufZ4AIfiqP0")
-CHAT_ID = os.environ.get("CHAT_ID", "1364766466")
+TELEGRAM_TOKEN = "8635777227:AAHC01rMDifi6m8wpHWO3wPIufZ4AIfiqP0"
+CHAT_ID = "1364766466"
 MIN_FACTORS = 9
 TOTAL_FACTORS = 13
 TBILISI_TZ = pytz.timezone('Asia/Tbilisi')
@@ -417,8 +417,22 @@ print(f"  Время: {TRADE_START}:00 — {TRADE_END}:00 (Тбилиси UTC+4)
 print(f"  Сканирование: каждые 30 минут")
 print("=" * 50)
 
+import traceback
+import sys
+
 schedule.every(30).minutes.do(scan)
-scan()
+try:
+    scan()
+except Exception as e:
+    print(f"КРИТИЧЕСКАЯ ОШИБКА при запуске: {e}", flush=True)
+    traceback.print_exc()
+    send_telegram(f"❌ Бот упал при запуске: {str(e)[:200]}")
+    sys.exit(1)
+
 while True:
-    schedule.run_pending()
+    try:
+        schedule.run_pending()
+    except Exception as e:
+        print(f"Ошибка в цикле: {e}", flush=True)
+        traceback.print_exc()
     time.sleep(60)
