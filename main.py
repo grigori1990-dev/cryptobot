@@ -290,17 +290,7 @@ def analyze(symbol, exchange, btc_trend, fg_value):
         conf = round(winning / (TOTAL_FACTORS * 0.6) * 100, 1)
         if conf > 99: conf = 99.0
 
-        # УЛУЧШЕНИЕ 3: фильтр BTC тренда
-        if btc_trend == "bear" and direction == "LONG" and symbol != "BTC/USDT":
-            return None
-        if btc_trend == "bull" and direction == "SHORT" and symbol != "BTC/USDT":
-            return None
-
-        # УЛУЧШЕНИЕ 4: Fear & Greed фильтр
-        if fg_value < 20 and direction == "SHORT":
-            return None  # Экстремальный страх — только лонги
-        if fg_value > 80 and direction == "LONG":
-            return None  # Экстремальная жадность — только шорты
+        # BTC тренд и F&G — только информационно, не блокируем сигналы
 
         close = df_1h["close"].iloc[-1]
 
