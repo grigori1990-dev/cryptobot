@@ -9,7 +9,7 @@ import pytz
 
 TELEGRAM_TOKEN = "8635777227:AAHC01rMDifi6m8wpHWO3wPIufZ4AIfiqP0"
 CHAT_ID = "1364766466"
-MIN_FACTORS = 9
+MIN_FACTORS = 6
 TOTAL_FACTORS = 13
 TBILISI_TZ = pytz.timezone('Asia/Tbilisi')
 TRADE_START = 8
@@ -268,25 +268,26 @@ def analyze(symbol, exchange, btc_trend, fg_value):
         if bull_1h is None or bull_4h is None:
             return None
 
-        # Направление на каждом таймфрейме
+        # Направление по 1H (основной таймфрейм)
         dir_1h = "LONG" if bull_1h > bear_1h else "SHORT"
         dir_4h = "LONG" if bull_4h > bear_4h else "SHORT"
-
-        # УЛУЧШЕНИЕ 1: оба таймфрейма должны совпадать
-        if dir_1h != dir_4h:
-            return None
-
         direction = dir_1h
 
-        # Суммируем факторы с весом: 1h = 60%, 4h = 40%
-        bull_total = bull_1h * 0.6 + bull_4h * 0.4
-        bear_total = bear_1h * 0.6 + bear_4h * 0.4
+        # 4H совпадает — даём бонус +20% к весу
+        if dir_1h == dir_4h:
+            bull_total = bull_1h * 0.6 + bull_4h * 0.4
+            bear_total = bear_1h * 0.6 + bear_4h * 0.4
+        else:
+            # 4H не совпадает — берём только 1H, но требуем выше порог
+            bull_total = bull_1h
+            bear_total = bear_1h
+
         winning = max(bull_total, bear_total)
 
-        if winning < MIN_FACTORS * 0.7:
+        if winning < MIN_FACTORS * 0.6:
             return None
 
-        conf = round(winning / (TOTAL_FACTORS * 0.7) * 100, 1)
+        conf = round(winning / (TOTAL_FACTORS * 0.6) * 100, 1)
         if conf > 99: conf = 99.0
 
         # УЛУЧШЕНИЕ 3: фильтр BTC тренда
