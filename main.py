@@ -349,7 +349,7 @@ def scan():
     print(f"[{now_tbilisi.strftime('%H:%M')} Тбилиси] Начинаю сканирование...")
     send_telegram("🔍 Сканирую рынок (v3.0 — мультитаймфрейм + ATR + BTC фильтр)...")
 
-    exchange = ccxt.binance({"timeout": 15000})
+    exchange = ccxt.bybit({"timeout": 15000})
 
     # Получаем общий контекст рынка
     fg_value, fg_name = get_fear_greed()
