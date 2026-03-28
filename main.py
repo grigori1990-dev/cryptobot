@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-КриптоБот v5.0 — Production Edition
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+КриптоБот v5.1 — Production Edition + Liquidity Grab
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Взвешенный скоринг: EMA 30% / RSI 25% / MACD 25% / Volume 20%
 • BTC-фильтр: bull→только LONG, bear→только SHORT, flat→−20%
 • Anti-fake: мин. 3 индикатора + растущий объём
 • Duplicate filter: 30 мин cooldown на монету
 • Volatility filter: пропуск если движение <0.5%
 • Blacklist низколиквидных монет
+• Liquidity Grab: sweep LOW/HIGH + возврат → +12% к скору (бонус)
 • Только сигналы в Telegram — никакого спама
 • asyncio + numpy — оптимизация под 512MB RAM
 """
@@ -135,6 +136,96 @@ def volume_trend(volume: np.ndarray, period=10) -> float:
         return 1.0
     avg = volume[-period - 1:-1].mean()
     return volume[-1] / (avg + 1e-10)
+
+
+# ════════════════════════════════════════════════════════════
+#  LIQUIDITY GRAB — детектор ложных пробоев
+# ════════════════════════════════════════════════════════════
+def detect_liquidity_grab(ohlcv_raw: list, direction: str):
+    """
+    Детектирует паттерн "снятия ликвидности" (liquidity grab / stop hunt).
+
+    LONG: цена пробила локальный LOW последних 10-20 свечей,
+          вернулась выше него, закрылась бычьей свечой при росте объёма.
+    SHORT: цена пробила локальный HIGH, вернулась ниже,
+           закрылась медвежьей свечой при росте объёма.
+
+    Возвращает (detected: bool, reason: str).
+    Если паттерна нет — (False, "").
+    """
+    if len(ohlcv_raw) < 25:
+        return False, ""
+
+    # Берём последние 25 свечей; base = первые 22, pattern = последние 3
+    data   = np.array(ohlcv_raw[-25:], dtype=np.float64)
+    open_  = data[:, 1]
+    high_  = data[:, 2]
+    low_   = data[:, 3]
+    close_ = data[:, 4]
+    vol_   = data[:, 5]
+
+    base_high = high_[:-3].max()   # локальный HIGH базы
+    base_low  = low_[:-3].min()    # локальный LOW базы
+
+    avg_vol  = vol_[:-3].mean()
+    last_vol = vol_[-1]
+    vol_ok   = last_vol > avg_vol * 1.3   # объём на возвратной свече вырос
+
+    del data
+
+    if direction == "LONG":
+        # 1. Хотя бы одна из последних 3 свечей опускалась ниже base_low
+        swept = min(low_[-3], low_[-2], low_[-1])
+        dipped = swept < base_low
+        if not dipped:
+            return False, ""
+
+        # 2. Движение вниз должно быть ≥ 0.3%
+        move_pct = (base_low - swept) / (base_low + 1e-10)
+        if move_pct < 0.003:
+            return False, ""
+
+        # 3. Цена вернулась ВЫШЕ base_low к текущей свече
+        if close_[-1] <= base_low:
+            return False, ""
+
+        # 4. Последняя свеча бычья (подтверждение разворота)
+        if close_[-1] <= open_[-1]:
+            return False, ""
+
+        # 5. Объём должен расти
+        if not vol_ok:
+            return False, ""
+
+        return True, f"Liquidity grab ↓ (sweep {move_pct * 100:.1f}% ниже LOW)"
+
+    elif direction == "SHORT":
+        # 1. Хотя бы одна из последних 3 свечей поднималась выше base_high
+        spiked_to = max(high_[-3], high_[-2], high_[-1])
+        spiked = spiked_to > base_high
+        if not spiked:
+            return False, ""
+
+        # 2. Движение вверх ≥ 0.3%
+        move_pct = (spiked_to - base_high) / (base_high + 1e-10)
+        if move_pct < 0.003:
+            return False, ""
+
+        # 3. Цена вернулась НИЖЕ base_high
+        if close_[-1] >= base_high:
+            return False, ""
+
+        # 4. Последняя свеча медвежья
+        if close_[-1] >= open_[-1]:
+            return False, ""
+
+        # 5. Объём должен расти
+        if not vol_ok:
+            return False, ""
+
+        return True, f"Liquidity grab ↑ (sweep {move_pct * 100:.1f}% выше HIGH)"
+
+    return False, ""
 
 
 # ════════════════════════════════════════════════════════════
@@ -387,6 +478,12 @@ async def analyze_coin(
 
             # ── Скоринг 1H (основной) ────────────────────
             result_1h = weighted_score(ohlcv_1h)
+
+            # ── Liquidity Grab — ДО очистки ohlcv_1h ─────
+            # Направление берём из result_1h (если есть), иначе пропускаем
+            _dir_tmp = result_1h["direction"] if result_1h else "LONG"
+            lg_detected, lg_reason = detect_liquidity_grab(ohlcv_1h, _dir_tmp)
+
             # ── Скоринг 4H (подтверждение) ───────────────
             result_4h = weighted_score(ohlcv_4h)
 
@@ -408,6 +505,12 @@ async def analyze_coin(
             if result_4h and result_4h["direction"] == direction:
                 conf = conf * 0.7 + result_4h["conf"] * 0.3
                 conf = min(conf, 99.0)
+
+            # ── Liquidity Grab бонус: +12% к скору ───────
+            # Не обязателен — сигнал работает и без него
+            if lg_detected and lg_reason:
+                conf = min(conf + 12.0, 99.0)
+                reasons = [lg_reason] + reasons  # LG — первым в причинах
 
             # ── ФИЛЬТР 1: Anti-fake — мин. 3 индикатора ──
             if agree < MIN_INDICATORS:
