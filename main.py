@@ -26,7 +26,7 @@ import pytz
 # ════════════════════════════════════════════════════════
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID        = os.getenv("CHAT_ID", "")
-MIN_CONF       = 50.0    # Минимальный скор (%)
+MIN_CONF       = 40.0    # Минимальный скор (%)
 SCAN_INTERVAL  = 300     # 5 минут между циклами
 MAX_CONCURRENT = 8       # Параллельных запросов (не перегружаем Bybit)
 TRADE_START    = 8       # Начало торговли (UTC+4 Тбилиси)
@@ -524,7 +524,7 @@ async def scan() -> None:
                 f"📍 Вход:  <b>{s['entry']}</b>\n"
                 f"🛑 Стоп:  <b>{s['sl']}</b>  (-{s['sl_pct']}% ATR)\n"
                 f"🎯 Цель:  <b>{s['tp']}</b>  (+{s['tp_pct']}% | 1:3)\n"
-                f"💪 Скор:  <b>{s['conf']}%</b>  (≥50% | 1H+4H)\n"
+                f"💪 Скор:  <b>{s['conf']}%</b>  (≥40% | 1H+4H)\n"
                 f"📝 {' | '.join(s['reasons'])}\n"
                 f"🌡 F&amp;G: {s['fg']} ({fg_name}) | BTC {btc_emoji}\n"
                 f"⏰ {t}"
