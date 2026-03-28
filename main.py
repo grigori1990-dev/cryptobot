@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import time
 import os
+import gc
 from datetime import datetime
 import pytz
 import traceback
@@ -251,7 +252,7 @@ def score_timeframe(df):
 # ─────────────── АНАЛИЗ МОНЕТЫ ───────────────
 def analyze(symbol, exchange, btc_trend, fg_value):
     try:
-        ohlcv_1h = exchange.fetch_ohlcv(symbol, "1h", limit=220)
+        ohlcv_1h = exchange.fetch_ohlcv(symbol, "1h", limit=210)
         df_1h = pd.DataFrame(ohlcv_1h, columns=["ts", "open", "high", "low", "close", "volume"])
         if len(df_1h) < 60:
             return None
@@ -315,6 +316,8 @@ def analyze(symbol, exchange, btc_trend, fg_value):
     except Exception as e:
         print(f"Ошибка {symbol}: {e}", flush=True)
         return None
+    finally:
+        gc.collect()
 
 # ─────────────── СКАНИРОВАНИЕ ───────────────
 def scan():
@@ -344,7 +347,7 @@ def scan():
     try:
         tickers = exchange.fetch_tickers()
         usdt = {k: v for k, v in tickers.items() if k.endswith("/USDT")}
-        coins = sorted(usdt, key=lambda x: usdt[x].get("quoteVolume", 0), reverse=True)[:50]
+        coins = sorted(usdt, key=lambda x: usdt[x].get("quoteVolume", 0), reverse=True)[:25]
         print(f"Загружено {len(coins)} монет", flush=True)
     except Exception as e:
         print(f"Ошибка загрузки тикеров: {e}", flush=True)
@@ -358,6 +361,7 @@ def scan():
             found.append(s)
             print(f"✅ {coin} {s['direction']} {s['conf']}%", flush=True)
         time.sleep(0.5)
+        gc.collect()
 
     found.sort(key=lambda x: x["conf"], reverse=True)
 
