@@ -12,6 +12,15 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID        = os.getenv("CHAT_ID", "")
 MIN_FACTORS    = 6
 TOTAL_FACTORS  = 13
+
+# Топ монеты для сканирования (фиксированный список — надёжнее API)
+TOP_COINS = [
+    "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT",
+    "DOGE/USDT", "ADA/USDT", "AVAX/USDT", "TRX/USDT", "DOT/USDT",
+    "LINK/USDT", "TON/USDT", "LTC/USDT", "BCH/USDT", "UNI/USDT",
+    "ATOM/USDT", "XLM/USDT", "ETC/USDT", "APT/USDT", "NEAR/USDT",
+    "OP/USDT", "ARB/USDT", "SUI/USDT", "INJ/USDT", "FTM/USDT",
+]
 TBILISI_TZ     = pytz.timezone('Asia/Tbilisi')
 TRADE_START    = 8
 TRADE_END      = 20
@@ -344,15 +353,8 @@ def scan():
     btc_emoji = "📈" if btc_trend == "bull" else ("📉" if btc_trend == "bear" else "➡️")
     print(f"Fear & Greed: {fg_value} ({fg_name}) | BTC тренд: {btc_trend}", flush=True)
 
-    try:
-        tickers = exchange.fetch_tickers()
-        usdt = {k: v for k, v in tickers.items() if k.endswith("/USDT")}
-        coins = sorted(usdt, key=lambda x: usdt[x].get("quoteVolume", 0), reverse=True)[:25]
-        print(f"Загружено {len(coins)} монет", flush=True)
-    except Exception as e:
-        print(f"Ошибка загрузки тикеров: {e}", flush=True)
-        send_telegram(f"❌ Ошибка загрузки рынка: {str(e)[:100]}")
-        return
+    coins = TOP_COINS
+    print(f"Сканирую {len(coins)} монет", flush=True)
 
     found = []
     for coin in coins:
