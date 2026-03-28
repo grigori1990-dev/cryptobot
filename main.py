@@ -403,8 +403,9 @@ async def fetch_and_analyze(
             bull_1h, bear_1h, atr_1h, reasons_1h = score_timeframe(ohlcv_1h)
             bull_4h, bear_4h, _,      reasons_4h = score_timeframe(ohlcv_4h)
 
-            # Освобождаем сырые данные немедленно
-            del ohlcv_1h, ohlcv_4h
+            # Освобождаем сырые данные немедленно (None вместо del — finally не упадёт)
+            ohlcv_1h = None
+            ohlcv_4h = None
             gc.collect()
 
             if bull_1h is None or bull_4h is None:
@@ -464,7 +465,8 @@ async def fetch_and_analyze(
             print(f"  ⚠ {symbol}: {e}", flush=True)
             return None
         finally:
-            del ohlcv_1h, ohlcv_4h
+            ohlcv_1h = None
+            ohlcv_4h = None
             gc.collect()
 
 
