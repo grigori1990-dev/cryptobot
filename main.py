@@ -80,6 +80,11 @@ last_prices: dict = {}          # symbol → last_close (для детекции
 last_signal_ts: dict = {}       # symbol → timestamp последнего сигнала
 last_scan_time: float = 0.0     # monotonic time последнего скана
 
+# — Трекер исходов сигналов (в памяти, без БД) —
+open_signals: dict = {}         # symbol → {entry,sl,tp,direction,conf,ts,day}
+daily_stats: dict = {}          # "YYYY-MM-DD" → {WIN,LOSS,EXPIRED,signals:[]}
+last_report_day: str = ""       # чтобы не слать отчёт дважды в один день
+
 
 # ════════════════════════════════════════════════════════════
 #  NUMPY ИНДИКАТОРЫ
@@ -402,6 +407,166 @@ def send_error(msg: str) -> None:
 
 
 # ════════════════════════════════════════════════════════════
+#  ТРЕКЕР ИСХОДОВ СИГНАЛОВ
+# ════════════════════════════════════════════════════════════
+def record_signal(signal: dict) -> None:
+    """Записываем новый сигнал в трекер при отправке."""
+    global open_signals, daily_stats
+    symbol = signal["symbol"]
+    today  = datetime.now(TBILISI_TZ).strftime("%Y-%m-%d")
+
+    # Если по этой монете уже есть открытый сигнал — перезаписываем
+    open_signals[symbol] = {
+        "entry":     signal["entry"],
+        "sl":        signal["sl"],
+        "tp":        signal["tp"],
+        "direction": signal["direction"],
+        "conf":      signal["conf"],
+        "ts":        time.time(),
+        "day":       today,
+    }
+
+    if today not in daily_stats:
+        daily_stats[today] = {"WIN": 0, "LOSS": 0, "EXPIRED": 0, "signals": []}
+
+    daily_stats[today]["signals"].append({
+        "symbol":    symbol,
+        "direction": signal["direction"],
+        "conf":      signal["conf"],
+        "entry":     signal["entry"],
+        "result":    None,
+    })
+
+
+def close_signal(symbol: str, result: str, price: float) -> None:
+    """Закрываем сигнал, обновляем статистику и шлём уведомление в Telegram."""
+    global open_signals, daily_stats
+    sig = open_signals.pop(symbol, None)
+    if not sig:
+        return
+
+    day = sig["day"]
+    if day not in daily_stats:
+        daily_stats[day] = {"WIN": 0, "LOSS": 0, "EXPIRED": 0, "signals": []}
+    daily_stats[day][result] += 1
+
+    # Проставляем результат в запись дня
+    for s in daily_stats[day]["signals"]:
+        if s["symbol"] == symbol and s["result"] is None:
+            s["result"] = result
+            break
+
+    # Формируем уведомление
+    entry_price = sig["entry"]
+    pnl_pct = abs(price - entry_price) / (entry_price + 1e-10) * 100
+    dir_label = "LONG" if sig["direction"] == "LONG" else "SHORT"
+
+    if result == "WIN":
+        emoji  = "✅"
+        detail = f"+{pnl_pct:.2f}%"
+    elif result == "LOSS":
+        emoji  = "❌"
+        detail = f"−{pnl_pct:.2f}%"
+    else:  # EXPIRED
+        emoji  = "⏱"
+        detail = "истёк лимит 24ч"
+
+    msg = (
+        f"{emoji} <b>{symbol} — {dir_label} → {result}</b>\n"
+        f"Вход: {entry_price}  →  Текущая: {round(price, 8)}\n"
+        f"Результат: {detail}\n"
+        f"Уверенность была: {sig['conf']}%"
+    )
+    send_telegram(msg)
+
+
+async def check_outcomes(exchange) -> None:
+    """Проверяем открытые сигналы на достижение TP/SL или истечение 24ч."""
+    if not open_signals:
+        return
+
+    symbols = list(open_signals.keys())
+    try:
+        tickers = await exchange.fetch_tickers(symbols)
+    except Exception:
+        return
+
+    now = time.time()
+
+    for symbol in list(open_signals.keys()):
+        sig = open_signals.get(symbol)
+        if not sig:
+            continue
+
+        # Таймаут 24 часа → EXPIRED
+        if now - sig["ts"] > 86400:
+            tick  = tickers.get(symbol, {})
+            price = tick.get("last") or sig["entry"]
+            close_signal(symbol, "EXPIRED", price)
+            continue
+
+        tick  = tickers.get(symbol, {})
+        price = tick.get("last")
+        if not price:
+            continue
+
+        if sig["direction"] == "LONG":
+            if price >= sig["tp"]:
+                close_signal(symbol, "WIN",  price)
+            elif price <= sig["sl"]:
+                close_signal(symbol, "LOSS", price)
+        else:  # SHORT
+            if price <= sig["tp"]:
+                close_signal(symbol, "WIN",  price)
+            elif price >= sig["sl"]:
+                close_signal(symbol, "LOSS", price)
+
+
+def send_daily_report() -> None:
+    """Отправляем дневной отчёт в Telegram (вызывается в 20:00 по Тбилиси)."""
+    global last_report_day
+    today = datetime.now(TBILISI_TZ).strftime("%Y-%m-%d")
+    last_report_day = today
+
+    stats   = daily_stats.get(today, {"WIN": 0, "LOSS": 0, "EXPIRED": 0, "signals": []})
+    wins    = stats["WIN"]
+    losses  = stats["LOSS"]
+    expired = stats["EXPIRED"]
+    total   = wins + losses + expired
+
+    if total == 0:
+        send_telegram(
+            f"📊 <b>Дневной отчёт — {today}</b>\n"
+            "Сигналов сегодня не было."
+        )
+        return
+
+    closed   = wins + losses
+    win_rate = round(wins / closed * 100, 1) if closed > 0 else 0.0
+
+    signals_today = [s for s in stats["signals"] if s["result"]]
+    best  = max(signals_today, key=lambda x: x["conf"], default=None) if signals_today else None
+    worst_list = [s for s in signals_today if s["result"] == "LOSS"]
+    worst = worst_list[0] if worst_list else None
+
+    lines = [
+        f"📊 <b>Дневной отчёт — {today}</b>",
+        f"Сигналов: {total}  |  ✅ {wins}  ❌ {losses}  ⏱ {expired}",
+    ]
+    if closed > 0:
+        lines.append(f"Win Rate: <b>{win_rate}%</b>")
+    if best:
+        lines.append(
+            f"Лучший: {best['symbol']} {best['direction']} "
+            f"({best['conf']}% → {best['result']})"
+        )
+    if worst:
+        lines.append(f"Проигрыш: {worst['symbol']} {worst['direction']}")
+
+    send_telegram("\n".join(lines))
+
+
+# ════════════════════════════════════════════════════════════
 #  BTC ТРЕНД-ФИЛЬТР
 # ════════════════════════════════════════════════════════════
 async def get_btc_trend(exchange) -> str:
@@ -636,6 +801,7 @@ async def scan() -> None:
             )
             send_telegram(msg)
             last_signal_ts[s["symbol"]] = time.time()
+            record_signal(s)
             await asyncio.sleep(0.3)
 
     finally:
@@ -674,9 +840,10 @@ async def main() -> None:
         exit(1)
 
     send_telegram(
-        "<b>КриптоБот v5.0</b> запущен\n"
+        "<b>КриптоБот v5.3</b> запущен\n"
         f"Часы: {TRADE_START}:00–{TRADE_END}:00 UTC+4\n"
-        f"Скор ≥{MIN_CONF}% | Фильтры: BTC + volume + anti-fake"
+        f"Скор ≥{MIN_CONF}% | Фильтры: BTC + volume + anti-fake\n"
+        "📊 Трекер исходов + дневной отчёт в 20:00"
     )
 
     while True:
@@ -702,6 +869,7 @@ async def main() -> None:
                 try:
                     exchange = ccxt_async.bybit({"timeout": 10000, "enableRateLimit": True})
                     changed = await quick_price_check(exchange)
+                    await check_outcomes(exchange)   # проверяем TP/SL открытых сигналов
                     await exchange.close()
 
                     if changed:
@@ -726,11 +894,18 @@ async def main() -> None:
                                 )
                                 send_telegram(msg)
                                 last_signal_ts[r["symbol"]] = time.time()
+                                record_signal(r)
                         del results, tasks
                         await exchange.close()
                         gc.collect()
                 except Exception:
                     pass
+
+        # ── Дневной отчёт в конце торгового дня ──────────────────
+        now_tbs = datetime.now(TBILISI_TZ)
+        today   = now_tbs.strftime("%Y-%m-%d")
+        if now_tbs.hour >= TRADE_END and last_report_day != today:
+            send_daily_report()
 
         gc.collect()
 
