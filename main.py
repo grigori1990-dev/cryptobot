@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-КриптоБот v5.6 — Production Edition (24/7 Stable)
+КриптоБот v5.7 — Production Edition (24/7 Stable)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Взвешенный скоринг: EMA 30% / RSI 25% / MACD 25% / Volume 20%
 • BTC-фильтр: bull→только LONG, bear→только SHORT, flat→−20%
@@ -1052,7 +1052,7 @@ async def main() -> None:
         daily_stats[today_str] = db_restore_today(today_str)
 
     send_telegram(
-        "<b>КриптоБот v5.6</b> запущен 🟢\n"
+        "<b>КриптоБот v5.7</b> запущен 🟢\n"
         f"Часы: {TRADE_START}:00–{TRADE_END}:00 UTC+4\n"
         f"Скор ≥{MIN_CONF}% | SQLite | Один exchange | 24/7"
         + (f"\n↩️ Восстановлено {len(restored)} открытых сигналов" if restored else "")
@@ -1136,4 +1136,25 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    print("КриптоБот v5.7 — запуск...", flush=True)
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Остановлен вручную.", flush=True)
+    except Exception as _boot_err:
+        import traceback as _tb
+        _tb.print_exc()
+        # Попытка уведомить в Telegram даже при краше при старте
+        if TELEGRAM_TOKEN and CHAT_ID:
+            try:
+                import requests as _req
+                _req.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                    json={"chat_id": CHAT_ID,
+                          "text": f"💀 КриптоБот УПАЛ при старте:\n{str(_boot_err)[:300]}",
+                          "parse_mode": "HTML"},
+                    timeout=10
+                )
+            except Exception:
+                pass
+        raise

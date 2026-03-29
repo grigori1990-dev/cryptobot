@@ -10,12 +10,20 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: "1"
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      CHAT_ID: ${{ secrets.CHAT_ID }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install deps
-        run: pip install ccxt pandas requests schedule pytz
+        run: pip install -r requirements.txt
       - name: Run bot
-        run: timeout 540 python main.py || true
+        run: |
+          timeout 540 python main.py
+          code=$?
+          # 124 = timeout (норма — бот убит по расписанию)
+          # 0   = чистый выход
+          # else = краш → job упадёт → GitHub уведомит по email
+          if [ $code -ne 0 ] && [ $code -ne 124 ]; then exit $code; fi
