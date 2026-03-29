@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-КриптоБот v5.2 — Production Edition + Liquidity Grab (15m)
+КриптоБот v5.4 — Production Edition
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Взвешенный скоринг: EMA 30% / RSI 25% / MACD 25% / Volume 20%
 • BTC-фильтр: bull→только LONG, bear→только SHORT, flat→−20%
@@ -8,8 +8,10 @@
 • Duplicate filter: 30 мин cooldown на монету
 • Volatility filter: пропуск если движение <0.5%
 • Blacklist низколиквидных монет
-• Liquidity Grab на 15m: sweep LOW/HIGH (1-3 свечи = 15-45 мин) → +12%
-• Только сигналы в Telegram — никакого спама
+• Liquidity Grab v2 (15m): 15-свечное окно, быстрый возврат,
+  улучш. volume, фильтр "не поздно" (>0.5% → игнор)
+• Трекер исходов + дневной Win Rate отчёт в 20:00
+• Retry (3×) при ECONNRESET/timeout → стабильность без падений
 • asyncio + numpy — оптимизация под 512MB RAM
 """
 
@@ -48,10 +50,15 @@ VOLATILITY_MIN      = 0.005     # 0.5% минимальное движение
 BTC_FLAT_PENALTY    = 0.80      # Снижение уверенности при флэте BTC
 
 # --- Сервер ---
-MAX_CONCURRENT      = 8
+MAX_CONCURRENT      = 6         # параллельных запросов (снижено для стабильности)
 TRADE_START         = 8
 TRADE_END           = 20
 TBILISI_TZ          = pytz.timezone('Asia/Tbilisi')
+
+# --- Сетевая устойчивость ---
+RETRY_ATTEMPTS      = 3         # попыток при ECONNRESET / timeout
+RETRY_DELAY         = 1.5       # базовая задержка между попытками (сек)
+API_TIMEOUT         = 10000     # ms — таймаут каждого запроса
 
 # --- Монеты ---
 TOP_50 = [
@@ -148,50 +155,58 @@ def volume_trend(volume: np.ndarray, period=10) -> float:
 # ════════════════════════════════════════════════════════════
 def detect_liquidity_grab(ohlcv_15m: list, direction: str):
     """
-    Детектирует паттерн "снятия ликвидности" на 15m свечах.
+    Детектирует паттерн "снятия ликвидности" на 15m свечах. v2.
 
-    На 15m: 3 свечи паттерна = 45 минут — реалистичное окно для stop hunt.
-    Base: последние 40 свечей (10 часов) — надёжный локальный уровень.
+    Base  : 15 свечей (3.75 ч) — достаточный локальный уровень без устаревших данных.
+    Pattern: последние 3 свечи (45 мин) — окно sweep + возврат.
 
-    LONG: цена пробила локальный LOW (base), вернулась выше,
-          закрыла бычью свечу при объёме ×1.5 среднего.
-    SHORT: цена пробила локальный HIGH, вернулась ниже,
-           закрыла медвежью свечу при объёме ×1.5.
+    LONG : пробой локального LOW ↓ → возврат выше уровня → бычья свеча
+    SHORT: пробой локального HIGH ↑ → возврат ниже уровня → медвежья свеча
 
-    Минимальный sweep: ≥ 0.3% (защита от шума).
+    Быстрый возврат    : sweep + return в рамках 3 свечей (45 мин) — встроено.
+    Не поздно входить  : close[-1] не ушёл более чем на 0.5% от уровня пробоя.
+    Volume (улучшено)  : ≥ среднего за 20 свечей ИЛИ ≥ ×1.5 среднего за базу.
+    Минимальный sweep  : ≥ 0.3% (защита от шума).
+
     Возвращает (detected: bool, reason: str).
     """
-    if len(ohlcv_15m) < 45:
+    if len(ohlcv_15m) < 20:
         return False, ""
 
-    # Берём последние 43 свечи: base = первые 40, pattern = последние 3
-    data   = np.array(ohlcv_15m[-43:], dtype=np.float64)
-    open_  = data[:, 1]
-    high_  = data[:, 2]
-    low_   = data[:, 3]
-    close_ = data[:, 4]
-    vol_   = data[:, 5]
+    # Сегмент 18 свечей: base = первые 15, pattern = последние 3
+    seg    = np.array(ohlcv_15m[-18:], dtype=np.float64)
+    open_  = seg[:, 1]
+    high_  = seg[:, 2]
+    low_   = seg[:, 3]
+    close_ = seg[:, 4]
+    vol_   = seg[:, 5]
 
-    base_high = high_[:-3].max()          # локальный HIGH за ~10 часов
-    base_low  = low_[:-3].min()           # локальный LOW за ~10 часов
-    avg_vol   = vol_[:-3].mean()
-    # Порог объёма ×1.5 — строже, чем раньше, отсекаем слабые паттерны
-    vol_ok    = vol_[-1] > avg_vol * 1.5
+    base_high    = high_[:15].max()    # локальный HIGH за 15 свечей (~3.75ч)
+    base_low     = low_[:15].min()     # локальный LOW
+    avg_vol_base = vol_[:15].mean()    # средний объём за базу
 
-    del data
+    # Volume за 20 свечей (для более мягкого порога)
+    vol_20   = np.array(ohlcv_15m[-20:], dtype=np.float64)[:, 5]
+    avg_vol_20 = vol_20.mean()
+    vol_20   = None  # освобождаем
+
+    # Volume OK: ≥ среднего за 20 свечей ИЛИ ≥ ×1.5 базового среднего
+    vol_ok = (vol_[-1] >= avg_vol_20) or (vol_[-1] >= avg_vol_base * 1.5)
+
+    del seg
 
     if direction == "LONG":
-        # 1. Sweep: хотя бы одна из последних 3 свечей ушла ниже base_low
+        # 1. Sweep: хотя бы одна из 3 pattern-свечей пробила base_low
         swept = min(low_[-3], low_[-2], low_[-1])
         if swept >= base_low:
             return False, ""
 
-        # 2. Размер sweep ≥ 0.3%
+        # 2. Размер sweep ≥ 0.3% (отсев шума)
         move_pct = (base_low - swept) / (base_low + 1e-10)
         if move_pct < 0.003:
             return False, ""
 
-        # 3. Возврат: текущая закрытая цена выше base_low
+        # 3. Быстрый возврат: close[-1] вернулся выше base_low
         if close_[-1] <= base_low:
             return False, ""
 
@@ -199,14 +214,19 @@ def detect_liquidity_grab(ohlcv_15m: list, direction: str):
         if close_[-1] <= open_[-1]:
             return False, ""
 
-        # 5. Объём вырос — признак реального входа крупного игрока
+        # 5. Объём подтверждает вход крупного игрока
         if not vol_ok:
             return False, ""
 
-        return True, f"Liquidity grab ↓ {move_pct * 100:.1f}% (15m)"
+        # 6. Не поздно: close[-1] не ушёл >0.5% выше уровня пробоя (base_low)
+        late_pct = (close_[-1] - base_low) / (base_low + 1e-10)
+        if late_pct > 0.005:
+            return False, ""
+
+        return True, f"LiqGrab ↓{move_pct * 100:.1f}% возврат+{late_pct * 100:.2f}% (15m)"
 
     elif direction == "SHORT":
-        # 1. Sweep: хотя бы одна из последних 3 свечей ушла выше base_high
+        # 1. Sweep: хотя бы одна из 3 pattern-свечей пробила base_high
         spiked_to = max(high_[-3], high_[-2], high_[-1])
         if spiked_to <= base_high:
             return False, ""
@@ -216,7 +236,7 @@ def detect_liquidity_grab(ohlcv_15m: list, direction: str):
         if move_pct < 0.003:
             return False, ""
 
-        # 3. Возврат: цена закрылась ниже base_high
+        # 3. Быстрый возврат: close[-1] вернулся ниже base_high
         if close_[-1] >= base_high:
             return False, ""
 
@@ -224,13 +244,63 @@ def detect_liquidity_grab(ohlcv_15m: list, direction: str):
         if close_[-1] >= open_[-1]:
             return False, ""
 
-        # 5. Объём вырос
+        # 5. Объём подтверждает вход крупного игрока
         if not vol_ok:
             return False, ""
 
-        return True, f"Liquidity grab ↑ {move_pct * 100:.1f}% (15m)"
+        # 6. Не поздно: close[-1] не ушёл >0.5% ниже уровня пробоя (base_high)
+        late_pct = (base_high - close_[-1]) / (base_high + 1e-10)
+        if late_pct > 0.005:
+            return False, ""
+
+        return True, f"LiqGrab ↑{move_pct * 100:.1f}% возврат+{late_pct * 100:.2f}% (15m)"
 
     return False, ""
+
+
+# ════════════════════════════════════════════════════════════
+#  СЕТЕВЫЕ УТИЛИТЫ — retry + exchange factory
+# ════════════════════════════════════════════════════════════
+# Ключевые слова для retryable сетевых ошибок
+_RETRY_KEYWORDS = (
+    "econnreset", "timeout", "timed out", "connection",
+    "network", "ssl", "reset", "502", "503", "504",
+)
+
+
+async def _retry(fn, *args, attempts: int = RETRY_ATTEMPTS,
+                 delay: float = RETRY_DELAY, **kwargs):
+    """
+    Оборачивает любой async-вызов ccxt в retry-логику.
+    При сетевой ошибке повторяет до `attempts` раз с экспоненциальной задержкой.
+    CancelledError пробрасывается немедленно.
+    """
+    last_exc: Exception = Exception("unknown")
+    for attempt in range(attempts):
+        try:
+            return await fn(*args, **kwargs)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            last_exc = exc
+            if attempt < attempts - 1:
+                err = str(exc).lower()
+                if any(k in err for k in _RETRY_KEYWORDS):
+                    await asyncio.sleep(delay * (attempt + 1))  # 1.5 → 3.0 → 4.5
+                    continue
+            break
+    raise last_exc
+
+
+def make_exchange(timeout: int = API_TIMEOUT) -> ccxt_async.bybit:
+    """
+    Фабрика Bybit exchange с оптимальными настройками стабильности.
+    Единая точка конфигурации — менять только здесь.
+    """
+    return ccxt_async.bybit({
+        "timeout":         timeout,
+        "enableRateLimit": True,
+    })
 
 
 # ════════════════════════════════════════════════════════════
@@ -487,7 +557,7 @@ async def check_outcomes(exchange) -> None:
 
     symbols = list(open_signals.keys())
     try:
-        tickers = await exchange.fetch_tickers(symbols)
+        tickers = await _retry(exchange.fetch_tickers, symbols)
     except Exception:
         return
 
@@ -570,9 +640,9 @@ def send_daily_report() -> None:
 #  BTC ТРЕНД-ФИЛЬТР
 # ════════════════════════════════════════════════════════════
 async def get_btc_trend(exchange) -> str:
-    """Возвращает 'bull', 'bear', или 'flat'"""
+    """Возвращает 'bull', 'bear', или 'flat'. Retry при сетевых ошибках."""
     try:
-        ohlcv = await exchange.fetch_ohlcv("BTC/USDT", "4h", limit=55)
+        ohlcv = await _retry(exchange.fetch_ohlcv, "BTC/USDT", "4h", limit=55)
         data  = np.array(ohlcv, dtype=np.float64)
         close = data[:, 4]
         ema21 = _ewm(close, 21)[-1]
@@ -622,11 +692,11 @@ async def analyze_coin(
     ohlcv_1h = ohlcv_4h = ohlcv_15m = None
     async with semaphore:
         try:
-            # Три таймфрейма параллельно: 1H (скоринг), 4H (подтверждение), 15m (LG)
+            # Три таймфрейма параллельно (каждый с retry при ECONNRESET/timeout)
             ohlcv_1h, ohlcv_4h, ohlcv_15m = await asyncio.gather(
-                exchange.fetch_ohlcv(symbol, "1h",  limit=210),
-                exchange.fetch_ohlcv(symbol, "4h",  limit=110),
-                exchange.fetch_ohlcv(symbol, "15m", limit=60),
+                _retry(exchange.fetch_ohlcv, symbol, "1h",  limit=210),
+                _retry(exchange.fetch_ohlcv, symbol, "4h",  limit=110),
+                _retry(exchange.fetch_ohlcv, symbol, "15m", limit=60),
             )
 
             if len(ohlcv_1h) < 60:
@@ -771,7 +841,7 @@ async def scan() -> None:
         await asyncio.sleep(MIN_SCAN_GAP - (now_mono - last_scan_time))
     last_scan_time = time.monotonic()
 
-    exchange  = ccxt_async.bybit({"timeout": 15000, "enableRateLimit": True})
+    exchange  = make_exchange()
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
     try:
@@ -816,7 +886,8 @@ async def quick_price_check(exchange) -> list:
     """Быстрая проверка: какие монеты двинулись ≥1% с прошлого скана"""
     changed = []
     try:
-        tickers = await exchange.fetch_tickers(
+        tickers = await _retry(
+            exchange.fetch_tickers,
             [c for c in TOP_50 if c not in BLACKLIST]
         )
         for sym, tick in tickers.items():
@@ -840,10 +911,9 @@ async def main() -> None:
         exit(1)
 
     send_telegram(
-        "<b>КриптоБот v5.3</b> запущен\n"
+        "<b>КриптоБот v5.4</b> запущен\n"
         f"Часы: {TRADE_START}:00–{TRADE_END}:00 UTC+4\n"
-        f"Скор ≥{MIN_CONF}% | Фильтры: BTC + volume + anti-fake\n"
-        "📊 Трекер исходов + дневной отчёт в 20:00"
+        f"Скор ≥{MIN_CONF}% | LiqGrab v2 | Retry 3× | Win Rate отчёт"
     )
 
     while True:
@@ -867,14 +937,14 @@ async def main() -> None:
 
             if remaining > 30 and is_trading_hours():
                 try:
-                    exchange = ccxt_async.bybit({"timeout": 10000, "enableRateLimit": True})
+                    exchange = make_exchange()
                     changed = await quick_price_check(exchange)
                     await check_outcomes(exchange)   # проверяем TP/SL открытых сигналов
                     await exchange.close()
 
                     if changed:
                         # Внеплановый скан только для изменившихся монет
-                        exchange = ccxt_async.bybit({"timeout": 15000, "enableRateLimit": True})
+                        exchange = make_exchange()
                         sem = asyncio.Semaphore(MAX_CONCURRENT)
                         btc_t = await get_btc_trend(exchange)
                         tasks = [analyze_coin(s, exchange, sem, btc_t) for s in changed]
