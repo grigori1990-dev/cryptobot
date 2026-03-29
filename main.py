@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-КриптоБот v5.7 — Production Edition (24/7 Stable)
+КриптоБот v5.8 — Production Edition (24/7 Stable)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Взвешенный скоринг: EMA 30% / RSI 25% / MACD 25% / Volume 20%
 • BTC-фильтр: bull→только LONG, bear→только SHORT, flat→−20%
@@ -40,7 +40,7 @@ TELEGRAM_TOKEN  = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID         = os.getenv("CHAT_ID", "")
 
 # --- Скоринг ---
-MIN_CONF            = 60.0      # Минимальный итоговый скор (%)
+MIN_CONF            = 40.0      # Минимальный итоговый скор (%) [тест: 40%, вернуть 60%]
 MIN_INDICATORS      = 3         # Мин. индикаторов в одном направлении
 WEIGHT_TREND        = 0.30      # EMA тренд
 WEIGHT_RSI          = 0.25      # RSI
@@ -102,7 +102,7 @@ open_signals: dict = {}         # symbol → {entry,sl,tp,direction,conf,ts,day}
 daily_stats: dict = {}          # "YYYY-MM-DD" → {WIN,LOSS,EXPIRED,signals:[]}
 last_report_day: str = ""       # чтобы не слать отчёт дважды в один день
 _last_scan_report: float = 0.0  # timestamp последнего скан-отчёта в Telegram
-SCAN_REPORT_INTERVAL = 1800     # отчёт о скане не чаще раза в 30 минут
+SCAN_REPORT_INTERVAL = 900      # отчёт о скане не чаще раза в 15 минут
 
 
 # ════════════════════════════════════════════════════════════
@@ -1105,9 +1105,9 @@ async def main() -> None:
         daily_stats[today_str] = db_restore_today(today_str)
 
     send_telegram(
-        "<b>КриптоБот v5.7</b> запущен 🟢\n"
+        "<b>КриптоБот v5.8</b> запущен 🟢\n"
         f"Часы: {TRADE_START}:00–{TRADE_END}:00 UTC+4\n"
-        f"Скор ≥{MIN_CONF}% | SQLite | Один exchange | 24/7"
+        f"Скор ≥{MIN_CONF}% | Скан-отчёт каждые 15 мин"
         + (f"\n↩️ Восстановлено {len(restored)} открытых сигналов" if restored else "")
     )
 
@@ -1189,7 +1189,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    print("КриптоБот v5.7 — запуск...", flush=True)
+    print("КриптоБот v5.8 — запуск...", flush=True)
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
