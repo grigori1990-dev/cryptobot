@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-КриптоБот v5.5 — Production Edition (24/7 Stable)
+КриптоБот v5.6 — Production Edition (24/7 Stable)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Взвешенный скоринг: EMA 30% / RSI 25% / MACD 25% / Volume 20%
 • BTC-фильтр: bull→только LONG, bear→только SHORT, flat→−20%
@@ -10,10 +10,12 @@
 • Blacklist низколиквидных монет
 • Liquidity Grab v2 (15m): 15-свечное окно, быстрый возврат,
   улучш. volume, фильтр "не поздно" (>0.5% → игнор)
-• Трекер исходов + дневной Win Rate отчёт в 20:00
+• SQLite3 трекер: сигналы выживают при Python-краше,
+  история WIN/LOSS/EXPIRED накапливается в signals.db
+• Восстановление открытых сигналов при рестарте
+• Один exchange на весь цикл — keep-alive TCP, меньше ECONNRESET
 • Retry 3× (1s/2s/3s + jitter) при ECONNRESET/timeout
 • MAX 5 параллельных запросов — без перегрузки API
-• Exchange close() в finally → нет утечек соединений
 • asyncio + numpy — оптимизация под 512MB RAM
 """
 
@@ -25,6 +27,7 @@ import gc
 import os
 import time
 import random
+import sqlite3
 import traceback
 from datetime import datetime, timedelta
 import pytz
@@ -63,6 +66,9 @@ RETRY_ATTEMPTS      = 3         # попыток при ECONNRESET / timeout
 RETRY_DELAY         = 1.0       # задержка: 1s → 2s → 3s (линейный рост)
 API_TIMEOUT         = 10000     # ms — таймаут каждого запроса (10 сек)
 
+# --- База данных (стандартная sqlite3, без внешних зависимостей) ---
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "signals.db")
+
 # --- Монеты ---
 TOP_50 = [
     "BTC/USDT",  "ETH/USDT",   "SOL/USDT",   "BNB/USDT",   "XRP/USDT",
@@ -94,6 +100,114 @@ last_scan_time: float = 0.0     # monotonic time последнего скана
 open_signals: dict = {}         # symbol → {entry,sl,tp,direction,conf,ts,day}
 daily_stats: dict = {}          # "YYYY-MM-DD" → {WIN,LOSS,EXPIRED,signals:[]}
 last_report_day: str = ""       # чтобы не слать отчёт дважды в один день
+
+
+# ════════════════════════════════════════════════════════════
+#  SQLITE — ПЕРСИСТЕНТНЫЙ ТРЕКЕР СИГНАЛОВ
+#  Стандартная библиотека Python, нет новых зависимостей.
+#  Данные выживают при Python-краше (контейнер остаётся живым).
+#  Сбрасываются только при полном перезапуске контейнера DO.
+# ════════════════════════════════════════════════════════════
+def init_db() -> None:
+    """Создаём таблицу signals при первом запуске (idempotent)."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS signals (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol    TEXT    NOT NULL,
+                direction TEXT    NOT NULL,
+                entry     REAL    NOT NULL,
+                sl        REAL    NOT NULL,
+                tp        REAL    NOT NULL,
+                conf      REAL    NOT NULL,
+                ts_open   REAL    NOT NULL,
+                day       TEXT    NOT NULL,
+                result    TEXT,           -- WIN / LOSS / EXPIRED (NULL = открытый)
+                ts_close  REAL,
+                pnl_pct   REAL
+            )
+        """)
+
+
+def db_record(signal: dict) -> None:
+    """INSERT нового сигнала в БД."""
+    today = datetime.now(TBILISI_TZ).strftime("%Y-%m-%d")
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("""
+                INSERT INTO signals
+                  (symbol, direction, entry, sl, tp, conf, ts_open, day)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (signal["symbol"], signal["direction"],
+                  signal["entry"], signal["sl"], signal["tp"],
+                  signal["conf"], time.time(), today))
+    except Exception:
+        pass  # ошибка БД не должна останавливать бота
+
+
+def db_close(symbol: str, result: str, pnl_pct: float) -> None:
+    """UPDATE — проставляем результат (WIN/LOSS/EXPIRED) в последний открытый сигнал."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("""
+                UPDATE signals
+                SET result=?, ts_close=?, pnl_pct=?
+                WHERE id = (
+                    SELECT id FROM signals
+                    WHERE symbol=? AND result IS NULL
+                    ORDER BY ts_open DESC LIMIT 1
+                )
+            """, (result, time.time(), pnl_pct, symbol))
+    except Exception:
+        pass
+
+
+def db_load_open_signals() -> dict:
+    """
+    Загружаем незакрытые сигналы после Python-краша или рестарта.
+    Возвращает dict в формате open_signals.
+    """
+    out = {}
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute("""
+                SELECT symbol, direction, entry, sl, tp, conf, ts_open, day
+                FROM signals WHERE result IS NULL
+                ORDER BY ts_open DESC
+            """).fetchall()
+        for symbol, direction, entry, sl, tp, conf, ts_open, day in rows:
+            out[symbol] = {
+                "entry": entry, "sl": sl, "tp": tp,
+                "direction": direction, "conf": conf,
+                "ts": ts_open, "day": day,
+            }
+    except Exception:
+        pass
+    return out
+
+
+def db_restore_today(today: str) -> dict:
+    """
+    Восстанавливаем статистику текущего дня из БД в формат daily_stats.
+    Вызывается при старте — не теряем данные после Python-краша.
+    """
+    stats = {"WIN": 0, "LOSS": 0, "EXPIRED": 0, "signals": []}
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute("""
+                SELECT symbol, direction, conf, entry, result
+                FROM signals WHERE day=? ORDER BY ts_open
+            """, (today,)).fetchall()
+        for symbol, direction, conf, entry, result in rows:
+            if result in ("WIN", "LOSS", "EXPIRED"):
+                stats[result] += 1
+            stats["signals"].append({
+                "symbol": symbol, "direction": direction,
+                "conf": conf, "entry": entry, "result": result,
+            })
+    except Exception:
+        pass
+    return stats
 
 
 # ════════════════════════════════════════════════════════════
@@ -513,6 +627,8 @@ def record_signal(signal: dict) -> None:
         "result":    None,
     })
 
+    db_record(signal)  # персистентность: записываем в SQLite
+
 
 def close_signal(symbol: str, result: str, price: float) -> None:
     """Закрываем сигнал, обновляем статистику и шлём уведомление в Telegram."""
@@ -554,6 +670,7 @@ def close_signal(symbol: str, result: str, price: float) -> None:
         f"Уверенность была: {sig['conf']}%"
     )
     send_telegram(msg)
+    db_close(symbol, result, pnl_pct)  # персистентность: закрываем в SQLite
 
 
 async def check_outcomes(exchange) -> None:
@@ -828,7 +945,12 @@ async def analyze_coin(
 # ════════════════════════════════════════════════════════════
 #  ASYNC: ОСНОВНОЙ СКАН
 # ════════════════════════════════════════════════════════════
-async def scan() -> None:
+async def scan(exchange_ext=None) -> None:
+    """
+    Основной скан.
+    exchange_ext: если передан — используем и НЕ закрываем (переиспользование).
+    Если None — создаём свой и закрываем в finally.
+    """
     global last_scan_time
 
     if not is_trading_hours():
@@ -847,7 +969,8 @@ async def scan() -> None:
         await asyncio.sleep(MIN_SCAN_GAP - (now_mono - last_scan_time))
     last_scan_time = time.monotonic()
 
-    exchange  = make_exchange()
+    _own      = exchange_ext is None         # мы владелец — нам и закрывать
+    exchange  = exchange_ext if exchange_ext is not None else make_exchange()
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
     try:
@@ -881,7 +1004,8 @@ async def scan() -> None:
             await asyncio.sleep(0.3)
 
     finally:
-        await exchange.close()
+        if _own:
+            await exchange.close()   # закрываем только если создавали сами
         gc.collect()
 
 
@@ -916,52 +1040,69 @@ async def main() -> None:
         print("TELEGRAM_TOKEN / CHAT_ID не заданы", flush=True)
         exit(1)
 
+    # ── Инициализация SQLite ──────────────────────────────────
+    init_db()
+    today_str = datetime.now(TBILISI_TZ).strftime("%Y-%m-%d")
+
+    # Восстановление после Python-краша: открытые сигналы + статистика дня
+    restored = db_load_open_signals()
+    if restored:
+        open_signals.update(restored)
+    if today_str not in daily_stats:
+        daily_stats[today_str] = db_restore_today(today_str)
+
     send_telegram(
-        "<b>КриптоБот v5.5</b> запущен 🟢\n"
+        "<b>КриптоБот v5.6</b> запущен 🟢\n"
         f"Часы: {TRADE_START}:00–{TRADE_END}:00 UTC+4\n"
-        f"Скор ≥{MIN_CONF}% | Retry 1s/2s/3s | Max5 запросов | 24/7"
+        f"Скор ≥{MIN_CONF}% | SQLite | Один exchange | 24/7"
+        + (f"\n↩️ Восстановлено {len(restored)} открытых сигналов" if restored else "")
     )
+
+    # ── Один exchange на всё время работы (GPT: keep-alive соединения) ──
+    exchange = make_exchange()
 
     while True:
         t_start = time.monotonic()
         try:
-            await scan()
+            await scan(exchange)        # передаём — scan не закрывает его
         except Exception as e:
             send_error(str(e)[:300])
+            # Пересоздаём exchange при серьёзной ошибке
+            try: await exchange.close()
+            except Exception: pass
+            exchange = make_exchange()
             await asyncio.sleep(60)
             continue
 
         # ── Между основными сканами: проверяем резкие движения ──
-        elapsed = time.monotonic() - t_start
+        elapsed   = time.monotonic() - t_start
         remaining = max(0.0, SCAN_INTERVAL - elapsed)
 
-        # Проверяем цены каждые 60 секунд в паузе
         while remaining > 0:
             wait_chunk = min(remaining, 60.0)
             await asyncio.sleep(wait_chunk)
             remaining -= wait_chunk
 
             if remaining > 30 and is_trading_hours():
-                # ── Быстрая проверка цен + TP/SL ──────────────────────────
-                exc1 = make_exchange()
+                # ── Быстрая проверка цен + TP/SL (тот же exchange) ────────
                 changed = []
                 try:
-                    changed = await quick_price_check(exc1)
-                    await check_outcomes(exc1)
-                except Exception:
-                    pass          # сетевая ошибка — пропускаем, бот продолжает
-                finally:
-                    try: await exc1.close()
-                    except Exception: pass
-                    exc1 = None
+                    changed = await quick_price_check(exchange)
+                    await check_outcomes(exchange)
+                except Exception as exc_e:
+                    # При сетевой ошибке — пересоздаём exchange
+                    err = str(exc_e).lower()
+                    if any(k in err for k in ("econnreset", "connection", "ssl", "reset")):
+                        try: await exchange.close()
+                        except Exception: pass
+                        exchange = make_exchange()
 
                 # ── Внеплановый скан для изменившихся монет ───────────────
                 if changed:
-                    exc2 = make_exchange()
                     try:
                         sem   = asyncio.Semaphore(MAX_CONCURRENT)
-                        btc_t = await get_btc_trend(exc2)
-                        tasks = [analyze_coin(s, exc2, sem, btc_t) for s in changed]
+                        btc_t = await get_btc_trend(exchange)
+                        tasks = [analyze_coin(s, exchange, sem, btc_t) for s in changed]
                         results = await asyncio.gather(*tasks, return_exceptions=True)
                         for r in results:
                             if r and isinstance(r, dict):
@@ -981,11 +1122,8 @@ async def main() -> None:
                                 record_signal(r)
                         del results, tasks
                     except Exception:
-                        pass      # сетевая ошибка — пропускаем итерацию
+                        pass
                     finally:
-                        try: await exc2.close()
-                        except Exception: pass
-                        exc2 = None
                         gc.collect()
 
         # ── Дневной отчёт в конце торгового дня ──────────────────
