@@ -102,7 +102,7 @@ open_signals: dict = {}         # symbol → {entry,sl,tp,direction,conf,ts,day}
 daily_stats: dict = {}          # "YYYY-MM-DD" → {WIN,LOSS,EXPIRED,signals:[]}
 last_report_day: str = ""       # чтобы не слать отчёт дважды в один день
 _last_scan_report: float = 0.0  # timestamp последнего скан-отчёта в Telegram
-SCAN_REPORT_INTERVAL = 900      # отчёт о скане не чаще раза в 15 минут
+SCAN_REPORT_INTERVAL = 300      # отчёт о скане каждые 5 минут (каждый скан)
 
 
 # ════════════════════════════════════════════════════════════
@@ -1107,7 +1107,7 @@ async def main() -> None:
     send_telegram(
         "<b>КриптоБот v5.8</b> запущен 🟢\n"
         f"Часы: {TRADE_START}:00–{TRADE_END}:00 UTC+4\n"
-        f"Скор ≥{MIN_CONF}% | Скан-отчёт каждые 15 мин"
+        f"Скор ≥{MIN_CONF}% | Скан-отчёт каждые 5 мин"
         + (f"\n↩️ Восстановлено {len(restored)} открытых сигналов" if restored else "")
     )
 
