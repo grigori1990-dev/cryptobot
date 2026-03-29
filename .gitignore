@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Логи
+*.log
+*.txt
+
+# База данных
+signals.db
+
+# Аудит
+system_audit.py
+system_audit_report.txt
+
+# Переменные окружения
+.env
