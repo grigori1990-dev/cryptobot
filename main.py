@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-КриптоБот v5.4 — Production Edition
+КриптоБот v5.5 — Production Edition (24/7 Stable)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Взвешенный скоринг: EMA 30% / RSI 25% / MACD 25% / Volume 20%
 • BTC-фильтр: bull→только LONG, bear→только SHORT, flat→−20%
@@ -11,7 +11,9 @@
 • Liquidity Grab v2 (15m): 15-свечное окно, быстрый возврат,
   улучш. volume, фильтр "не поздно" (>0.5% → игнор)
 • Трекер исходов + дневной Win Rate отчёт в 20:00
-• Retry (3×) при ECONNRESET/timeout → стабильность без падений
+• Retry 3× (1s/2s/3s + jitter) при ECONNRESET/timeout
+• MAX 5 параллельных запросов — без перегрузки API
+• Exchange close() в finally → нет утечек соединений
 • asyncio + numpy — оптимизация под 512MB RAM
 """
 
@@ -22,6 +24,7 @@ import requests
 import gc
 import os
 import time
+import random
 import traceback
 from datetime import datetime, timedelta
 import pytz
@@ -50,15 +53,15 @@ VOLATILITY_MIN      = 0.005     # 0.5% минимальное движение
 BTC_FLAT_PENALTY    = 0.80      # Снижение уверенности при флэте BTC
 
 # --- Сервер ---
-MAX_CONCURRENT      = 6         # параллельных запросов (снижено для стабильности)
+MAX_CONCURRENT      = 5         # макс. параллельных запросов (не больше 5 — GPT совет)
 TRADE_START         = 8
 TRADE_END           = 20
 TBILISI_TZ          = pytz.timezone('Asia/Tbilisi')
 
 # --- Сетевая устойчивость ---
 RETRY_ATTEMPTS      = 3         # попыток при ECONNRESET / timeout
-RETRY_DELAY         = 1.5       # базовая задержка между попытками (сек)
-API_TIMEOUT         = 10000     # ms — таймаут каждого запроса
+RETRY_DELAY         = 1.0       # задержка: 1s → 2s → 3s (линейный рост)
+API_TIMEOUT         = 10000     # ms — таймаут каждого запроса (10 сек)
 
 # --- Монеты ---
 TOP_50 = [
@@ -272,8 +275,9 @@ async def _retry(fn, *args, attempts: int = RETRY_ATTEMPTS,
                  delay: float = RETRY_DELAY, **kwargs):
     """
     Оборачивает любой async-вызов ccxt в retry-логику.
-    При сетевой ошибке повторяет до `attempts` раз с экспоненциальной задержкой.
-    CancelledError пробрасывается немедленно.
+    При сетевой ошибке: 3 попытки, задержка 1s → 2s → 3s + случайный jitter ±0.3s.
+    CancelledError пробрасывается немедленно (не ретраим).
+    Не-сетевые ошибки (данных нет и т.д.) — сразу пробрасываются без retry.
     """
     last_exc: Exception = Exception("unknown")
     for attempt in range(attempts):
@@ -286,7 +290,9 @@ async def _retry(fn, *args, attempts: int = RETRY_ATTEMPTS,
             if attempt < attempts - 1:
                 err = str(exc).lower()
                 if any(k in err for k in _RETRY_KEYWORDS):
-                    await asyncio.sleep(delay * (attempt + 1))  # 1.5 → 3.0 → 4.5
+                    # Линейный рост: 1s → 2s → 3s + jitter до ±0.3s
+                    wait = delay * (attempt + 1) + random.uniform(0.0, 0.3)
+                    await asyncio.sleep(wait)
                     continue
             break
     raise last_exc
@@ -911,9 +917,9 @@ async def main() -> None:
         exit(1)
 
     send_telegram(
-        "<b>КриптоБот v5.4</b> запущен\n"
+        "<b>КриптоБот v5.5</b> запущен 🟢\n"
         f"Часы: {TRADE_START}:00–{TRADE_END}:00 UTC+4\n"
-        f"Скор ≥{MIN_CONF}% | LiqGrab v2 | Retry 3× | Win Rate отчёт"
+        f"Скор ≥{MIN_CONF}% | Retry 1s/2s/3s | Max5 запросов | 24/7"
     )
 
     while True:
@@ -936,22 +942,30 @@ async def main() -> None:
             remaining -= wait_chunk
 
             if remaining > 30 and is_trading_hours():
+                # ── Быстрая проверка цен + TP/SL ──────────────────────────
+                exc1 = make_exchange()
+                changed = []
                 try:
-                    exchange = make_exchange()
-                    changed = await quick_price_check(exchange)
-                    await check_outcomes(exchange)   # проверяем TP/SL открытых сигналов
-                    await exchange.close()
+                    changed = await quick_price_check(exc1)
+                    await check_outcomes(exc1)
+                except Exception:
+                    pass          # сетевая ошибка — пропускаем, бот продолжает
+                finally:
+                    try: await exc1.close()
+                    except Exception: pass
+                    exc1 = None
 
-                    if changed:
-                        # Внеплановый скан только для изменившихся монет
-                        exchange = make_exchange()
-                        sem = asyncio.Semaphore(MAX_CONCURRENT)
-                        btc_t = await get_btc_trend(exchange)
-                        tasks = [analyze_coin(s, exchange, sem, btc_t) for s in changed]
-                        results = await asyncio.gather(*tasks)
+                # ── Внеплановый скан для изменившихся монет ───────────────
+                if changed:
+                    exc2 = make_exchange()
+                    try:
+                        sem   = asyncio.Semaphore(MAX_CONCURRENT)
+                        btc_t = await get_btc_trend(exc2)
+                        tasks = [analyze_coin(s, exc2, sem, btc_t) for s in changed]
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
                         for r in results:
-                            if r:
-                                t = datetime.now(TBILISI_TZ).strftime("%H:%M %d.%m.%Y")
+                            if r and isinstance(r, dict):
+                                t  = datetime.now(TBILISI_TZ).strftime("%H:%M %d.%m.%Y")
                                 dl = "LONG" if r["direction"] == "LONG" else "SHORT"
                                 msg = (
                                     f"⚡ <b>{r['symbol']} — {dl}</b>  (движение ≥1%)\n"
@@ -966,10 +980,13 @@ async def main() -> None:
                                 last_signal_ts[r["symbol"]] = time.time()
                                 record_signal(r)
                         del results, tasks
-                        await exchange.close()
+                    except Exception:
+                        pass      # сетевая ошибка — пропускаем итерацию
+                    finally:
+                        try: await exc2.close()
+                        except Exception: pass
+                        exc2 = None
                         gc.collect()
-                except Exception:
-                    pass
 
         # ── Дневной отчёт в конце торгового дня ──────────────────
         now_tbs = datetime.now(TBILISI_TZ)
