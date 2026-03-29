@@ -1,0 +1,256 @@
+﻿2026-03-27T06:15:03.2478049Z Current runner version: '2.332.0'
+2026-03-27T06:15:03.2503286Z ##[group]Runner Image Provisioner
+2026-03-27T06:15:03.2504276Z Hosted Compute Agent
+2026-03-27T06:15:03.2504824Z Version: 20260213.493
+2026-03-27T06:15:03.2505449Z Commit: 5c115507f6dd24b8de37d8bbe0bb4509d0cc0fa3
+2026-03-27T06:15:03.2506255Z Build Date: 2026-02-13T00:28:41Z
+2026-03-27T06:15:03.2507391Z Worker ID: {8c323f79-c17e-4bdc-8748-10ff41d7b0bd}
+2026-03-27T06:15:03.2508093Z Azure Region: westcentralus
+2026-03-27T06:15:03.2508781Z ##[endgroup]
+2026-03-27T06:15:03.2510269Z ##[group]Operating System
+2026-03-27T06:15:03.2510833Z Ubuntu
+2026-03-27T06:15:03.2511449Z 24.04.3
+2026-03-27T06:15:03.2511984Z LTS
+2026-03-27T06:15:03.2512427Z ##[endgroup]
+2026-03-27T06:15:03.2513037Z ##[group]Runner Image
+2026-03-27T06:15:03.2513625Z Image: ubuntu-24.04
+2026-03-27T06:15:03.2514122Z Version: 20260309.50.1
+2026-03-27T06:15:03.2515440Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260309.50/images/ubuntu/Ubuntu2404-Readme.md
+2026-03-27T06:15:03.2517212Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260309.50
+2026-03-27T06:15:03.2518195Z ##[endgroup]
+2026-03-27T06:15:03.2519427Z ##[group]GITHUB_TOKEN Permissions
+2026-03-27T06:15:03.2521483Z Contents: read
+2026-03-27T06:15:03.2522118Z Metadata: read
+2026-03-27T06:15:03.2522744Z Packages: read
+2026-03-27T06:15:03.2523271Z ##[endgroup]
+2026-03-27T06:15:03.2525393Z Secret source: Actions
+2026-03-27T06:15:03.2526247Z Prepare workflow directory
+2026-03-27T06:15:03.2876473Z Prepare all required actions
+2026-03-27T06:15:03.2915584Z Getting action download info
+2026-03-27T06:15:03.6835183Z Download action repository 'actions/checkout@v3' (SHA:f43a0e5ff2bd294095638e18286ca9a3d1956744)
+2026-03-27T06:15:03.8327487Z Download action repository 'actions/setup-python@v4' (SHA:7f4fc3e22c37d6ff65e88745f38bd3157c663f7c)
+2026-03-27T06:15:04.0541765Z Complete job name: run-bot
+2026-03-27T06:15:04.1282459Z ##[group]Run actions/checkout@v3
+2026-03-27T06:15:04.1283476Z with:
+2026-03-27T06:15:04.1283938Z   repository: grigori1990-dev/cryptobot
+2026-03-27T06:15:04.1284685Z   token: ***
+2026-03-27T06:15:04.1285084Z   ssh-strict: true
+2026-03-27T06:15:04.1285518Z   persist-credentials: true
+2026-03-27T06:15:04.1285986Z   clean: true
+2026-03-27T06:15:04.1286411Z   sparse-checkout-cone-mode: true
+2026-03-27T06:15:04.1287091Z   fetch-depth: 1
+2026-03-27T06:15:04.1287510Z   fetch-tags: false
+2026-03-27T06:15:04.1287922Z   lfs: false
+2026-03-27T06:15:04.1288317Z   submodules: false
+2026-03-27T06:15:04.1288759Z   set-safe-directory: true
+2026-03-27T06:15:04.1289457Z ##[endgroup]
+2026-03-27T06:15:04.2214811Z Syncing repository: grigori1990-dev/cryptobot
+2026-03-27T06:15:04.2217828Z ##[group]Getting Git version info
+2026-03-27T06:15:04.2219037Z Working directory is '/home/runner/work/cryptobot/cryptobot'
+2026-03-27T06:15:04.2220828Z [command]/usr/bin/git version
+2026-03-27T06:15:04.2261313Z git version 2.53.0
+2026-03-27T06:15:04.2290681Z ##[endgroup]
+2026-03-27T06:15:04.2306758Z Temporarily overriding HOME='/home/runner/work/_temp/dc81f2a6-e692-4b75-ba19-499f9f33abc8' before making global git config changes
+2026-03-27T06:15:04.2309072Z Adding repository directory to the temporary git global config as a safe directory
+2026-03-27T06:15:04.2311052Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/cryptobot/cryptobot
+2026-03-27T06:15:04.2352886Z Deleting the contents of '/home/runner/work/cryptobot/cryptobot'
+2026-03-27T06:15:04.2357539Z ##[group]Initializing the repository
+2026-03-27T06:15:04.2360713Z [command]/usr/bin/git init /home/runner/work/cryptobot/cryptobot
+2026-03-27T06:15:04.2467871Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-03-27T06:15:04.2470040Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-03-27T06:15:04.2472196Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-03-27T06:15:04.2473919Z hint: call:
+2026-03-27T06:15:04.2474722Z hint:
+2026-03-27T06:15:04.2475815Z hint: 	git config --global init.defaultBranch <name>
+2026-03-27T06:15:04.2476727Z hint:
+2026-03-27T06:15:04.2477608Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-03-27T06:15:04.2478638Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-03-27T06:15:04.2479445Z hint:
+2026-03-27T06:15:04.2479860Z hint: 	git branch -m <name>
+2026-03-27T06:15:04.2480343Z hint:
+2026-03-27T06:15:04.2481408Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-03-27T06:15:04.2482787Z Initialized empty Git repository in /home/runner/work/cryptobot/cryptobot/.git/
+2026-03-27T06:15:04.2485469Z [command]/usr/bin/git remote add origin https://github.com/grigori1990-dev/cryptobot
+2026-03-27T06:15:04.2522061Z ##[endgroup]
+2026-03-27T06:15:04.2522856Z ##[group]Disabling automatic garbage collection
+2026-03-27T06:15:04.2524589Z [command]/usr/bin/git config --local gc.auto 0
+2026-03-27T06:15:04.2554430Z ##[endgroup]
+2026-03-27T06:15:04.2555171Z ##[group]Setting up auth
+2026-03-27T06:15:04.2560292Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-03-27T06:15:04.2590218Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-03-27T06:15:04.2948399Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-03-27T06:15:04.2985111Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-03-27T06:15:04.3256365Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-03-27T06:15:04.3296341Z ##[endgroup]
+2026-03-27T06:15:04.3298709Z ##[group]Fetching the repository
+2026-03-27T06:15:04.3307078Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --progress --no-recurse-submodules --depth=1 origin +6bc0477ce62d0e43f669b834ecc028f10e6dea46:refs/remotes/origin/main
+2026-03-27T06:15:04.6710436Z remote: Enumerating objects: 8, done.        
+2026-03-27T06:15:04.6711623Z remote: Counting objects:  12% (1/8)        
+2026-03-27T06:15:04.6712445Z remote: Counting objects:  25% (2/8)        
+2026-03-27T06:15:04.6713270Z remote: Counting objects:  37% (3/8)        
+2026-03-27T06:15:04.6714054Z remote: Counting objects:  50% (4/8)        
+2026-03-27T06:15:04.6714792Z remote: Counting objects:  62% (5/8)        
+2026-03-27T06:15:04.6715525Z remote: Counting objects:  75% (6/8)        
+2026-03-27T06:15:04.6716256Z remote: Counting objects:  87% (7/8)        
+2026-03-27T06:15:04.6717295Z remote: Counting objects: 100% (8/8)        
+2026-03-27T06:15:04.6718064Z remote: Counting objects: 100% (8/8), done.        
+2026-03-27T06:15:04.6718931Z remote: Compressing objects:  20% (1/5)        
+2026-03-27T06:15:04.6719747Z remote: Compressing objects:  40% (2/5)        
+2026-03-27T06:15:04.6720796Z remote: Compressing objects:  60% (3/5)        
+2026-03-27T06:15:04.6722014Z remote: Compressing objects:  80% (4/5)        
+2026-03-27T06:15:04.6723190Z remote: Compressing objects: 100% (5/5)        
+2026-03-27T06:15:04.6724385Z remote: Compressing objects: 100% (5/5), done.        
+2026-03-27T06:15:04.6725289Z remote: Total 8 (delta 0), reused 2 (delta 0), pack-reused 0 (from 0)        
+2026-03-27T06:15:04.7115595Z From https://github.com/grigori1990-dev/cryptobot
+2026-03-27T06:15:04.7117747Z  * [new ref]         6bc0477ce62d0e43f669b834ecc028f10e6dea46 -> origin/main
+2026-03-27T06:15:04.7144629Z ##[endgroup]
+2026-03-27T06:15:04.7145961Z ##[group]Determining the checkout info
+2026-03-27T06:15:04.7148581Z ##[endgroup]
+2026-03-27T06:15:04.7149865Z ##[group]Checking out the ref
+2026-03-27T06:15:04.7152244Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-03-27T06:15:04.7198679Z Switched to a new branch 'main'
+2026-03-27T06:15:04.7201223Z branch 'main' set up to track 'origin/main'.
+2026-03-27T06:15:04.7208354Z ##[endgroup]
+2026-03-27T06:15:04.7248431Z [command]/usr/bin/git log -1 --format='%H'
+2026-03-27T06:15:04.7273877Z '6bc0477ce62d0e43f669b834ecc028f10e6dea46'
+2026-03-27T06:15:04.7574149Z ##[group]Run actions/setup-python@v4
+2026-03-27T06:15:04.7574971Z with:
+2026-03-27T06:15:04.7575435Z   python-version: 3.11
+2026-03-27T06:15:04.7576054Z   check-latest: false
+2026-03-27T06:15:04.7577280Z   token: ***
+2026-03-27T06:15:04.7577810Z   update-environment: true
+2026-03-27T06:15:04.7578480Z   allow-prereleases: false
+2026-03-27T06:15:04.7579108Z ##[endgroup]
+2026-03-27T06:15:04.9418859Z ##[group]Installed versions
+2026-03-27T06:15:04.9883374Z Successfully set up CPython (3.11.15)
+2026-03-27T06:15:04.9885373Z ##[endgroup]
+2026-03-27T06:15:05.0046835Z ##[group]Run pip install ccxt pandas requests schedule pytz
+2026-03-27T06:15:05.0048750Z [36;1mpip install ccxt pandas requests schedule pytz[0m
+2026-03-27T06:15:05.0158621Z shell: /usr/bin/bash -e {0}
+2026-03-27T06:15:05.0159874Z env:
+2026-03-27T06:15:05.0161105Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-27T06:15:05.0162999Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
+2026-03-27T06:15:05.0164870Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-27T06:15:05.0166759Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-27T06:15:05.0168444Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-27T06:15:05.0170128Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
+2026-03-27T06:15:05.0171529Z ##[endgroup]
+2026-03-27T06:15:08.0070631Z Collecting ccxt
+2026-03-27T06:15:08.1185258Z   Downloading ccxt-4.5.45-py2.py3-none-any.whl.metadata (139 kB)
+2026-03-27T06:15:08.2859309Z Collecting pandas
+2026-03-27T06:15:08.3052283Z   Downloading pandas-3.0.1-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (79 kB)
+2026-03-27T06:15:08.3895433Z Collecting requests
+2026-03-27T06:15:08.4088553Z   Downloading requests-2.33.0-py3-none-any.whl.metadata (5.1 kB)
+2026-03-27T06:15:08.4399183Z Collecting schedule
+2026-03-27T06:15:08.4591462Z   Downloading schedule-1.2.2-py3-none-any.whl.metadata (3.8 kB)
+2026-03-27T06:15:08.5098058Z Collecting pytz
+2026-03-27T06:15:08.5294844Z   Downloading pytz-2026.1.post1-py2.py3-none-any.whl.metadata (22 kB)
+2026-03-27T06:15:08.5377744Z Requirement already satisfied: setuptools>=60.9.0 in /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages (from ccxt) (79.0.1)
+2026-03-27T06:15:08.5685868Z Collecting certifi>=2018.1.18 (from ccxt)
+2026-03-27T06:15:08.5874945Z   Downloading certifi-2026.2.25-py3-none-any.whl.metadata (2.5 kB)
+2026-03-27T06:15:08.7947805Z Collecting cryptography>=2.6.1 (from ccxt)
+2026-03-27T06:15:08.8139788Z   Downloading cryptography-46.0.6-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
+2026-03-27T06:15:08.8496290Z Collecting typing_extensions>=4.4.0 (from ccxt)
+2026-03-27T06:15:08.8687041Z   Downloading typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
+2026-03-27T06:15:09.3644271Z Collecting aiohttp>=3.10.11 (from ccxt)
+2026-03-27T06:15:09.3840419Z   Downloading aiohttp-3.13.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (8.1 kB)
+2026-03-27T06:15:09.4151739Z Collecting aiodns>=1.1.1 (from ccxt)
+2026-03-27T06:15:09.4344558Z   Downloading aiodns-4.0.0-py3-none-any.whl.metadata (7.7 kB)
+2026-03-27T06:15:09.6899483Z Collecting yarl>=1.7.2 (from ccxt)
+2026-03-27T06:15:09.7112702Z   Downloading yarl-1.23.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (79 kB)
+2026-03-27T06:15:09.8381407Z Collecting coincurve==21.0.0 (from ccxt)
+2026-03-27T06:15:09.8582721Z   Downloading coincurve-21.0.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.0 kB)
+2026-03-27T06:15:10.0442422Z Collecting numpy>=1.26.0 (from pandas)
+2026-03-27T06:15:10.0630321Z   Downloading numpy-2.4.3-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (6.6 kB)
+2026-03-27T06:15:10.0924818Z Collecting python-dateutil>=2.8.2 (from pandas)
+2026-03-27T06:15:10.1118641Z   Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+2026-03-27T06:15:10.2123385Z Collecting charset_normalizer<4,>=2 (from requests)
+2026-03-27T06:15:10.2319083Z   Downloading charset_normalizer-3.4.6-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (40 kB)
+2026-03-27T06:15:10.2691380Z Collecting idna<4,>=2.5 (from requests)
+2026-03-27T06:15:10.2879361Z   Downloading idna-3.11-py3-none-any.whl.metadata (8.4 kB)
+2026-03-27T06:15:10.3260948Z Collecting urllib3<3,>=1.26 (from requests)
+2026-03-27T06:15:10.3449435Z   Downloading urllib3-2.6.3-py3-none-any.whl.metadata (6.9 kB)
+2026-03-27T06:15:10.4337680Z Collecting pycares<6,>=5.0.0 (from aiodns>=1.1.1->ccxt)
+2026-03-27T06:15:10.4526355Z   Downloading pycares-5.0.1-cp311-cp311-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl.metadata (4.1 kB)
+2026-03-27T06:15:10.6198919Z Collecting cffi>=1.5.0 (from pycares<6,>=5.0.0->aiodns>=1.1.1->ccxt)
+2026-03-27T06:15:10.6385501Z   Downloading cffi-2.0.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.6 kB)
+2026-03-27T06:15:10.6696267Z Collecting aiohappyeyeballs>=2.5.0 (from aiohttp>=3.10.11->ccxt)
+2026-03-27T06:15:10.6880846Z   Downloading aiohappyeyeballs-2.6.1-py3-none-any.whl.metadata (5.9 kB)
+2026-03-27T06:15:10.7161455Z Collecting aiosignal>=1.4.0 (from aiohttp>=3.10.11->ccxt)
+2026-03-27T06:15:10.7345740Z   Downloading aiosignal-1.4.0-py3-none-any.whl.metadata (3.7 kB)
+2026-03-27T06:15:10.7651393Z Collecting attrs>=17.3.0 (from aiohttp>=3.10.11->ccxt)
+2026-03-27T06:15:10.7840529Z   Downloading attrs-26.1.0-py3-none-any.whl.metadata (8.8 kB)
+2026-03-27T06:15:10.8632725Z Collecting frozenlist>=1.1.1 (from aiohttp>=3.10.11->ccxt)
+2026-03-27T06:15:10.8823038Z   Downloading frozenlist-1.8.0-cp311-cp311-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (20 kB)
+2026-03-27T06:15:11.1107243Z Collecting multidict<7.0,>=4.5 (from aiohttp>=3.10.11->ccxt)
+2026-03-27T06:15:11.1296365Z   Downloading multidict-6.7.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (5.3 kB)
+2026-03-27T06:15:11.1948136Z Collecting propcache>=0.2.0 (from aiohttp>=3.10.11->ccxt)
+2026-03-27T06:15:11.2142565Z   Downloading propcache-0.4.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (13 kB)
+2026-03-27T06:15:11.2563502Z Collecting pycparser (from cffi>=1.5.0->pycares<6,>=5.0.0->aiodns>=1.1.1->ccxt)
+2026-03-27T06:15:11.2749927Z   Downloading pycparser-3.0-py3-none-any.whl.metadata (8.2 kB)
+2026-03-27T06:15:11.3069940Z Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas)
+2026-03-27T06:15:11.3264594Z   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+2026-03-27T06:15:11.3678427Z Downloading ccxt-4.5.45-py2.py3-none-any.whl (6.5 MB)
+2026-03-27T06:15:11.9275234Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.5/6.5 MB 12.3 MB/s  0:00:00
+2026-03-27T06:15:11.9501671Z Downloading coincurve-21.0.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (1.6 MB)
+2026-03-27T06:15:12.0145862Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.6/1.6 MB 24.5 MB/s  0:00:00
+2026-03-27T06:15:12.0335307Z Downloading pandas-3.0.1-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (11.3 MB)
+2026-03-27T06:15:12.3205447Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 11.3/11.3 MB 39.7 MB/s  0:00:00
+2026-03-27T06:15:12.3400018Z Downloading requests-2.33.0-py3-none-any.whl (65 kB)
+2026-03-27T06:15:12.3621613Z Downloading charset_normalizer-3.4.6-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (204 kB)
+2026-03-27T06:15:12.3857647Z Downloading idna-3.11-py3-none-any.whl (71 kB)
+2026-03-27T06:15:12.4074136Z Downloading urllib3-2.6.3-py3-none-any.whl (131 kB)
+2026-03-27T06:15:12.4295645Z Downloading schedule-1.2.2-py3-none-any.whl (12 kB)
+2026-03-27T06:15:12.4508311Z Downloading pytz-2026.1.post1-py2.py3-none-any.whl (510 kB)
+2026-03-27T06:15:12.4783605Z Downloading aiodns-4.0.0-py3-none-any.whl (11 kB)
+2026-03-27T06:15:12.5017930Z Downloading pycares-5.0.1-cp311-cp311-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl (222 kB)
+2026-03-27T06:15:12.5257116Z Downloading aiohttp-3.13.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (1.7 MB)
+2026-03-27T06:15:12.5575716Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.7/1.7 MB 53.3 MB/s  0:00:00
+2026-03-27T06:15:12.5771113Z Downloading multidict-6.7.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (246 kB)
+2026-03-27T06:15:12.6001005Z Downloading yarl-1.23.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (102 kB)
+2026-03-27T06:15:12.6219332Z Downloading aiohappyeyeballs-2.6.1-py3-none-any.whl (15 kB)
+2026-03-27T06:15:12.6433619Z Downloading aiosignal-1.4.0-py3-none-any.whl (7.5 kB)
+2026-03-27T06:15:12.6770851Z Downloading attrs-26.1.0-py3-none-any.whl (67 kB)
+2026-03-27T06:15:12.8348886Z Downloading certifi-2026.2.25-py3-none-any.whl (153 kB)
+2026-03-27T06:15:13.0857535Z Downloading cffi-2.0.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (215 kB)
+2026-03-27T06:15:13.1329579Z Downloading cryptography-46.0.6-cp311-abi3-manylinux_2_34_x86_64.whl (4.5 MB)
+2026-03-27T06:15:13.2197577Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 51.3 MB/s  0:00:00
+2026-03-27T06:15:13.2387800Z Downloading frozenlist-1.8.0-cp311-cp311-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (231 kB)
+2026-03-27T06:15:13.2910206Z Downloading numpy-2.4.3-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.9 MB)
+2026-03-27T06:15:13.7686262Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.9/16.9 MB 35.1 MB/s  0:00:00
+2026-03-27T06:15:13.7875263Z Downloading propcache-0.4.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (210 kB)
+2026-03-27T06:15:13.8456808Z Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+2026-03-27T06:15:13.8906955Z Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+2026-03-27T06:15:13.9363263Z Downloading typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+2026-03-27T06:15:13.9848867Z Downloading pycparser-3.0-py3-none-any.whl (48 kB)
+2026-03-27T06:15:14.2378588Z Installing collected packages: pytz, urllib3, typing_extensions, six, schedule, pycparser, propcache, numpy, multidict, idna, frozenlist, coincurve, charset_normalizer, certifi, attrs, aiohappyeyeballs, yarl, requests, python-dateutil, cffi, aiosignal, pycares, pandas, cryptography, aiohttp, aiodns, ccxt
+2026-03-27T06:15:25.6100080Z 
+2026-03-27T06:15:25.6120468Z Successfully installed aiodns-4.0.0 aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 attrs-26.1.0 ccxt-4.5.45 certifi-2026.2.25 cffi-2.0.0 charset_normalizer-3.4.6 coincurve-21.0.0 cryptography-46.0.6 frozenlist-1.8.0 idna-3.11 multidict-6.7.1 numpy-2.4.3 pandas-3.0.1 propcache-0.4.1 pycares-5.0.1 pycparser-3.0 python-dateutil-2.9.0.post0 pytz-2026.1.post1 requests-2.33.0 schedule-1.2.2 six-1.17.0 typing_extensions-4.15.0 urllib3-2.6.3 yarl-1.23.0
+2026-03-27T06:15:26.2929591Z ##[group]Run timeout 540 python main.py || true
+2026-03-27T06:15:26.2929960Z [36;1mtimeout 540 python main.py || true[0m
+2026-03-27T06:15:26.2982507Z shell: /usr/bin/bash -e {0}
+2026-03-27T06:15:26.2982758Z env:
+2026-03-27T06:15:26.2983027Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-27T06:15:26.2983499Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
+2026-03-27T06:15:26.2983952Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-27T06:15:26.2984359Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-27T06:15:26.2984760Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-03-27T06:15:26.2985173Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
+2026-03-27T06:15:26.2985895Z   TELEGRAM_TOKEN: ***
+2026-03-27T06:15:26.2986131Z   CHAT_ID: ***
+2026-03-27T06:15:26.2986929Z ##[endgroup]
+2026-03-27T06:24:26.3218411Z Post job cleanup.
+2026-03-27T06:24:26.5004973Z Post job cleanup.
+2026-03-27T06:24:26.5784282Z [command]/usr/bin/git version
+2026-03-27T06:24:26.5830411Z git version 2.53.0
+2026-03-27T06:24:26.5877907Z Temporarily overriding HOME='/home/runner/work/_temp/46069f02-e03c-4e0d-8dbd-fb2d92f1f785' before making global git config changes
+2026-03-27T06:24:26.5879836Z Adding repository directory to the temporary git global config as a safe directory
+2026-03-27T06:24:26.5881748Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/cryptobot/cryptobot
+2026-03-27T06:24:26.5922815Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-03-27T06:24:26.5959746Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-03-27T06:24:26.6261555Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-03-27T06:24:26.6294916Z http.https://github.com/.extraheader
+2026-03-27T06:24:26.6307351Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-03-27T06:24:26.6349675Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-03-27T06:24:26.6763356Z Cleaning up orphan processes
+2026-03-27T06:24:26.7140660Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@v3, actions/setup-python@v4. Actions will be forced to run with Node.js 24 by default starting June 2nd, 2026. Please check if updated versions of these actions are available that support Node.js 24. To opt into Node.js 24 now, set the FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true environment variable on the runner or in your workflow file. Once Node.js 24 becomes the default, you can temporarily opt out by setting ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
