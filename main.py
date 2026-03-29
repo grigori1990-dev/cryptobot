@@ -1007,7 +1007,28 @@ async def scan(exchange_ext=None) -> None:
             flush=True
         )
 
-        # ── Telegram скан-отчёт (каждые 30 мин или первый скан) ────
+        # ── Сигналы — каждый отдельным сообщением со всеми деталями ────
+        for s in found:
+            dir_label  = "LONG 📈" if s["direction"] == "LONG" else "SHORT 📉"
+            dir_emoji  = "🟢" if s["direction"] == "LONG" else "🔴"
+            t = datetime.now(TBILISI_TZ).strftime("%H:%M %d.%m.%Y")
+            msg = (
+                f"🚨 <b>СИГНАЛ: {s['symbol']} — {dir_label}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"{dir_emoji} Входить: <b>{s['entry']}</b>\n"
+                f"🛑 Стоп-лосс: <b>{s['sl']}</b>  (−{s['sl_pct']}%)\n"
+                f"🎯 Тейк-профит: <b>{s['tp']}</b>  (+{s['tp_pct']}%)\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📋 Причина: {' + '.join(s['reasons'])}\n"
+                f"💯 Уверенность: {s['conf']}%\n"
+                f"🕐 {t}"
+            )
+            send_telegram(msg)
+            last_signal_ts[s["symbol"]] = time.time()
+            record_signal(s)
+            await asyncio.sleep(0.5)
+
+        # ── Скан-отчёт (каждые 5 мин, только если нет сигналов) ────
         global _last_scan_report
         now_ts = time.time()
         if now_ts - _last_scan_report >= SCAN_REPORT_INTERVAL:
@@ -1015,18 +1036,7 @@ async def scan(exchange_ext=None) -> None:
             btc_emoji = {"bull": "🟢 бычий", "bear": "🔴 медвежий",
                          "flat": "⚪ боковик"}.get(btc_trend, "⚪")
             t_now = datetime.now(TBILISI_TZ).strftime("%H:%M")
-            if found:
-                sig_list = ", ".join(
-                    f"{s['symbol'].replace('/USDT','')} {s['direction']} {s['conf']}%"
-                    for s in found[:3]
-                )
-                send_telegram(
-                    f"📊 Скан-отчёт | {t_now}\n"
-                    f"BTC: {btc_emoji}\n"
-                    f"✅ Сигналов найдено: {len(found)}\n"
-                    f"   {sig_list}"
-                )
-            else:
+            if not found:
                 send_telegram(
                     f"📊 Скан-отчёт | {t_now}\n"
                     f"BTC: {btc_emoji}\n"
@@ -1038,23 +1048,6 @@ async def scan(exchange_ext=None) -> None:
                     f"Сигналов: 0"
                 )
         del results, tasks, reject_reasons, rc
-
-        for s in found:
-            dir_label = "LONG" if s["direction"] == "LONG" else "SHORT"
-            t = datetime.now(TBILISI_TZ).strftime("%H:%M %d.%m.%Y")
-            msg = (
-                f"<b>{s['symbol']} — {dir_label}</b>\n"
-                f"Цена: {s['entry']}\n"
-                f"Стоп: {s['sl']}  (−{s['sl_pct']}%)\n"
-                f"Цель: {s['tp']}  (+{s['tp_pct']}%)\n"
-                f"Причина: {' + '.join(s['reasons'])}\n"
-                f"Уверенность: {s['conf']}%\n"
-                f"{t}"
-            )
-            send_telegram(msg)
-            last_signal_ts[s["symbol"]] = time.time()
-            record_signal(s)
-            await asyncio.sleep(0.3)
 
     finally:
         if _own:
