@@ -101,7 +101,8 @@ last_scan_time: float = 0.0     # monotonic time последнего скана
 open_signals: dict = {}         # symbol → {entry,sl,tp,direction,conf,ts,day}
 daily_stats: dict = {}          # "YYYY-MM-DD" → {WIN,LOSS,EXPIRED,signals:[]}
 last_report_day: str = ""       # чтобы не слать отчёт дважды в один день
-_diag_sent: bool = False        # диагностика отправлена (один раз за запуск)
+_last_scan_report: float = 0.0  # timestamp последнего скан-отчёта в Telegram
+SCAN_REPORT_INTERVAL = 1800     # отчёт о скане не чаще раза в 30 минут
 
 
 # ════════════════════════════════════════════════════════════
@@ -1006,21 +1007,36 @@ async def scan(exchange_ext=None) -> None:
             flush=True
         )
 
-        # ── Telegram-диагностика (только если 0 сигналов) ────
-        # Отправляем один раз за запуск бота чтобы видеть что мешает
-        global _diag_sent
-        if not found and not _diag_sent:
-            _diag_sent = True
-            btc_emoji = {"bull": "🟢", "bear": "🔴", "flat": "⚪"}.get(btc_trend, "⚪")
-            send_telegram(
-                f"🔍 Скан: {len(coins)} монет, сигналов нет\n"
-                f"BTC: {btc_emoji} {btc_trend}\n"
-                f"❌ Мало индикаторов: {rc.get('indicators',0)}\n"
-                f"❌ Объём низкий: {rc.get('volume',0)}\n"
-                f"❌ BTC-фильтр: {rc.get('btc',0)}\n"
-                f"❌ Скор <{MIN_CONF}%: {rc.get('conf',0)}\n"
-                f"⏰ {datetime.now(TBILISI_TZ).strftime('%H:%M')}"
-            )
+        # ── Telegram скан-отчёт (каждые 30 мин или первый скан) ────
+        global _last_scan_report
+        now_ts = time.time()
+        if now_ts - _last_scan_report >= SCAN_REPORT_INTERVAL:
+            _last_scan_report = now_ts
+            btc_emoji = {"bull": "🟢 бычий", "bear": "🔴 медвежий",
+                         "flat": "⚪ боковик"}.get(btc_trend, "⚪")
+            t_now = datetime.now(TBILISI_TZ).strftime("%H:%M")
+            if found:
+                sig_list = ", ".join(
+                    f"{s['symbol'].replace('/USDT','')} {s['direction']} {s['conf']}%"
+                    for s in found[:3]
+                )
+                send_telegram(
+                    f"📊 Скан-отчёт | {t_now}\n"
+                    f"BTC: {btc_emoji}\n"
+                    f"✅ Сигналов найдено: {len(found)}\n"
+                    f"   {sig_list}"
+                )
+            else:
+                send_telegram(
+                    f"📊 Скан-отчёт | {t_now}\n"
+                    f"BTC: {btc_emoji}\n"
+                    f"Монет просканировано: {len(coins)}\n"
+                    f"❌ Индикаторы (<3): {rc.get('indicators', 0)}\n"
+                    f"❌ Объём низкий: {rc.get('volume', 0)}\n"
+                    f"❌ BTC-фильтр: {rc.get('btc', 0)}\n"
+                    f"❌ Скор <{int(MIN_CONF)}%: {rc.get('conf', 0)}\n"
+                    f"Сигналов: 0"
+                )
         del results, tasks, reject_reasons, rc
 
         for s in found:
