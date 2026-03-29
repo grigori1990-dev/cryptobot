@@ -29,6 +29,7 @@ import time
 import random
 import sqlite3
 import traceback
+from collections import Counter
 from datetime import datetime, timedelta
 import pytz
 
@@ -100,6 +101,7 @@ last_scan_time: float = 0.0     # monotonic time последнего скана
 open_signals: dict = {}         # symbol → {entry,sl,tp,direction,conf,ts,day}
 daily_stats: dict = {}          # "YYYY-MM-DD" → {WIN,LOSS,EXPIRED,signals:[]}
 last_report_day: str = ""       # чтобы не слать отчёт дважды в один день
+_diag_sent: bool = False        # диагностика отправлена (один раз за запуск)
 
 
 # ════════════════════════════════════════════════════════════
@@ -808,6 +810,7 @@ async def analyze_coin(
     exchange,
     semaphore: asyncio.Semaphore,
     btc_trend: str,
+    _reject: list = None,          # если передан список — пишем причину отклонения
 ):
     if symbol in BLACKLIST:
         return None
@@ -877,19 +880,23 @@ async def analyze_coin(
             # ── ФИЛЬТР 1: Anti-fake — мин. 3 индикатора ──
             if agree < MIN_INDICATORS:
                 last_prices[symbol] = last_close
+                if _reject is not None: _reject.append("indicators")
                 return None
 
             # ── ФИЛЬТР 2: Объём должен расти ─────────────
             if not vol_ok:
                 last_prices[symbol] = last_close
+                if _reject is not None: _reject.append("volume")
                 return None
 
             # ── ФИЛЬТР 3: BTC-фильтр ─────────────────────
             if btc_trend == "bull" and direction == "SHORT":
                 last_prices[symbol] = last_close
+                if _reject is not None: _reject.append("btc")
                 return None
             if btc_trend == "bear" and direction == "LONG":
                 last_prices[symbol] = last_close
+                if _reject is not None: _reject.append("btc")
                 return None
             if btc_trend == "flat":
                 conf *= BTC_FLAT_PENALTY
@@ -897,11 +904,13 @@ async def analyze_coin(
             # ── ФИЛЬТР 4: Минимальный скор ───────────────
             if conf < MIN_CONF:
                 last_prices[symbol] = last_close
+                if _reject is not None: _reject.append("conf")
                 return None
 
             # ── ФИЛЬТР 5: Дубликат <30 мин ───────────────
             if is_duplicate(symbol):
                 last_prices[symbol] = last_close
+                if _reject is not None: _reject.append("dup")
                 return None
 
             # ── SL/TP через ATR (1:3) ────────────────────
@@ -979,12 +988,40 @@ async def scan(exchange_ext=None) -> None:
         # Отфильтровать монеты: исключить blacklist
         coins = [c for c in TOP_50 if c not in BLACKLIST]
 
-        tasks   = [analyze_coin(sym, exchange, semaphore, btc_trend) for sym in coins]
+        # Собираем причины отклонения для диагностики
+        reject_reasons: list = []
+        tasks   = [analyze_coin(sym, exchange, semaphore, btc_trend, reject_reasons)
+                   for sym in coins]
         results = await asyncio.gather(*tasks)
         found   = [r for r in results if r is not None]
         found.sort(key=lambda x: x["conf"], reverse=True)
 
-        del results, tasks
+        # ── Stdout лог (виден в GitHub Actions) ──────────────
+        rc = Counter(reject_reasons)
+        print(
+            f"[СКАН] {len(coins)} монет | BTC={btc_trend} | "
+            f"сигналов={len(found)} | "
+            f"indic={rc.get('indicators',0)} vol={rc.get('volume',0)} "
+            f"btc={rc.get('btc',0)} conf={rc.get('conf',0)} dup={rc.get('dup',0)}",
+            flush=True
+        )
+
+        # ── Telegram-диагностика (только если 0 сигналов) ────
+        # Отправляем один раз за запуск бота чтобы видеть что мешает
+        global _diag_sent
+        if not found and not _diag_sent:
+            _diag_sent = True
+            btc_emoji = {"bull": "🟢", "bear": "🔴", "flat": "⚪"}.get(btc_trend, "⚪")
+            send_telegram(
+                f"🔍 Скан: {len(coins)} монет, сигналов нет\n"
+                f"BTC: {btc_emoji} {btc_trend}\n"
+                f"❌ Мало индикаторов: {rc.get('indicators',0)}\n"
+                f"❌ Объём низкий: {rc.get('volume',0)}\n"
+                f"❌ BTC-фильтр: {rc.get('btc',0)}\n"
+                f"❌ Скор <{MIN_CONF}%: {rc.get('conf',0)}\n"
+                f"⏰ {datetime.now(TBILISI_TZ).strftime('%H:%M')}"
+            )
+        del results, tasks, reject_reasons, rc
 
         for s in found:
             dir_label = "LONG" if s["direction"] == "LONG" else "SHORT"
